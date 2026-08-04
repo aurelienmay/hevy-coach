@@ -1,10 +1,13 @@
 import { fetchAllWorkouts } from "@/lib/hevy";
+import { requireHevyApiKey } from "@/lib/currentUser";
 import { startOfMonth, totalSetsCount, workingSetsCount } from "@/lib/workoutStats";
+import SessionTitleEditor from "@/components/SessionTitleEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function SessionsPage() {
-  const workouts = await fetchAllWorkouts(startOfMonth(new Date(), 1).toISOString());
+  const { apiKey } = await requireHevyApiKey();
+  const workouts = await fetchAllWorkouts(apiKey, startOfMonth(new Date(), 1).toISOString());
   const sessions = [...workouts].sort(
     (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
   );
@@ -30,7 +33,9 @@ export default async function SessionsPage() {
             return (
               <tr key={s.id} style={{ borderBottom: "1px solid #1c1f23" }}>
                 <td style={{ padding: "6px 8px" }}>{new Date(s.start_time).toLocaleDateString()}</td>
-                <td style={{ padding: "6px 8px" }}>{s.title}</td>
+                <td style={{ padding: "6px 8px" }}>
+                  <SessionTitleEditor sessionId={s.id} title={s.title} />
+                </td>
                 <td style={{ padding: "6px 8px" }}>{durMin} min</td>
                 <td style={{ padding: "6px 8px" }}>{workingSetsCount(s)}</td>
                 <td style={{ padding: "6px 8px", color: "#888" }}>{totalSetsCount(s)}</td>

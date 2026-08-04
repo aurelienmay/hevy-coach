@@ -1,9 +1,11 @@
-import { sql } from "@/lib/db";
 import { muscleFor } from "@/lib/muscleMap";
-import { VOLUME_TARGETS, EXCLUDED_MUSCLES } from "@/lib/volumeTargets";
+import { EXCLUDED_MUSCLES } from "@/lib/volumeTargets";
 import { computePlanVolume } from "@/lib/planVolume";
 import type { Routine, RoutineExercise, RoutineSet } from "@/components/RoutineCard";
-import type { HevyExerciseUpdate, HevySetUpdate } from "@/lib/hevy";
+import { fetchAllRoutines, fetchAllWorkouts, type HevyExerciseUpdate, type HevySetUpdate, type HevyWorkout } from "@/lib/hevy";
+import { muscleVolume, startOfWeek, workingSets, workoutsInRange } from "@/lib/workoutStats";
+import { getVolumeTargets, type VolumeTargets } from "@/lib/currentUser";
+import { createClient } from "@/lib/supabase/server";
 
 export type ProposedEdit = {
   id: string;
@@ -40,61 +42,52 @@ type WeeklyData = {
   sessionsThisWeek: { title: string; start_time: string; workingSets: number; totalSets: number }[];
   progression: ExerciseProgression[];
   favorites: Routine[];
+  targets: VolumeTargets;
 };
 
-async function gatherWeeklyData(): Promise<WeeklyData> {
-  const favorites = await sql<Routine[]>`
-    select id, title, updated_at, is_favorite, raw
-    from routines
-    where is_favorite
-    order by title asc
-  `;
+async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<WeeklyData> {
+  const supabase = createClient();
+  const [allRoutines, workouts, { data: favoriteRows }, targets] = await Promise.all([
+    fetchAllRoutines(hevyApiKey),
+    fetchAllWorkouts(hevyApiKey, new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000).toISOString()),
+    supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
+    getVolumeTargets(userId),
+  ]);
+  const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
+  const favorites: Routine[] = allRoutines
+    .filter((r) => favoriteIds.has(r.id))
+    .map((r) => ({ ...r, is_favorite: true }))
+    .sort((a, b) => a.title.localeCompare(b.title));
 
-  const currentWeekVolume = await sql<{ muscle: string; sets: number }[]>`
-    select e.muscle, count(*)::int as sets
-    from sets s
-    join exercises e on e.id = s.exercise_id
-    join workouts w on w.id = s.workout_id
-    where s.set_type != 'warmup'
-      and w.start_time >= date_trunc('week', now())
-      and e.muscle not in ${sql(EXCLUDED_MUSCLES)}
-    group by e.muscle
-    order by sets desc
-  `;
+  const weekStart = startOfWeek();
+  const thisWeekWorkouts = workoutsInRange(workouts, weekStart);
+  const currentWeekVolume = muscleVolume(thisWeekWorkouts, EXCLUDED_MUSCLES);
 
-  const priorWeeksVolume = await sql<{ weekStart: string; muscle: string; sets: number }[]>`
-    select date_trunc('week', w.start_time)::date::text as "weekStart", e.muscle, count(*)::int as sets
-    from sets s
-    join exercises e on e.id = s.exercise_id
-    join workouts w on w.id = s.workout_id
-    where s.set_type != 'warmup'
-      and w.start_time >= date_trunc('week', now()) - interval '4 weeks'
-      and w.start_time < date_trunc('week', now())
-      and e.muscle not in ${sql(EXCLUDED_MUSCLES)}
-    group by 1, e.muscle
-    order by 1, sets desc
-  `;
+  const priorWeeksVolume: { weekStart: string; muscle: string; sets: number }[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const from = new Date(weekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+    const to = new Date(weekStart.getTime() - (i - 1) * 7 * 24 * 60 * 60 * 1000);
+    const weekWorkouts = workoutsInRange(workouts, from, to);
+    for (const { muscle, sets } of muscleVolume(weekWorkouts, EXCLUDED_MUSCLES)) {
+      priorWeeksVolume.push({ weekStart: from.toISOString().slice(0, 10), muscle, sets });
+    }
+  }
+  priorWeeksVolume.sort((a, b) => (a.weekStart < b.weekStart ? -1 : a.weekStart > b.weekStart ? 1 : b.sets - a.sets));
 
-  const sessionsThisWeekRaw = await sql<
-    { title: string; start_time: string | Date; workingSets: number; totalSets: number }[]
-  >`
-    select
-      w.title, w.start_time,
-      count(*) filter (where s.set_type != 'warmup')::int as "workingSets",
-      count(*)::int as "totalSets"
-    from workouts w
-    join sets s on s.workout_id = w.id
-    where w.start_time >= date_trunc('week', now())
-    group by w.id, w.title, w.start_time
-    order by w.start_time asc
-  `;
-  const sessionsThisWeek = sessionsThisWeekRaw.map((s) => ({ ...s, start_time: toISO(s.start_time) }));
+  const sessionsThisWeek = [...thisWeekWorkouts]
+    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+    .map((w) => ({
+      title: w.title,
+      start_time: w.start_time,
+      workingSets: workingSets(w).length,
+      totalSets: w.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
+    }));
 
   const exerciseIds = Array.from(
-    new Set(favorites.flatMap((r) => (r.raw.exercises ?? []).map((ex) => ex.exercise_template_id).filter(Boolean)))
+    new Set(favorites.flatMap((r) => (r.exercises ?? []).map((ex) => ex.exercise_template_id).filter(Boolean)))
   );
 
-  const progression = exerciseIds.length > 0 ? await gatherProgression(exerciseIds) : [];
+  const progression = gatherProgression(workouts, exerciseIds);
 
   return {
     weekStart: new Date().toISOString(),
@@ -104,52 +97,40 @@ async function gatherWeeklyData(): Promise<WeeklyData> {
     sessionsThisWeek,
     progression,
     favorites,
+    targets,
   };
 }
 
-type ProgressionRow = {
-  exercise_id: string;
-  title: string;
-  muscle: string;
-  start_time: string;
-  weight_kg: number | null;
-  reps: number | null;
-  rpe: number | null;
-};
+function gatherProgression(workouts: HevyWorkout[], exerciseIds: string[]): ExerciseProgression[] {
+  const wanted = new Set(exerciseIds);
+  const byExercise = new Map<
+    string,
+    { title: string; muscle: string; bySession: Map<string, { weight_kg: number | null; reps: number | null; rpe: number | null }[]> }
+  >();
 
-function toISO(d: string | Date): string {
-  return d instanceof Date ? d.toISOString() : d;
-}
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      if (!wanted.has(ex.exercise_template_id)) continue;
+      const workingSetsForEx = ex.sets.filter((s) => s.type !== "warmup");
+      if (workingSetsForEx.length === 0) continue;
 
-async function gatherProgression(exerciseIds: string[]): Promise<ExerciseProgression[]> {
-  const rawRows = await sql<
-    (Omit<ProgressionRow, "start_time"> & { start_time: string | Date })[]
-  >`
-    select s.exercise_id, e.title, e.muscle, w.start_time, s.weight_kg, s.reps, s.rpe
-    from sets s
-    join workouts w on w.id = s.workout_id
-    join exercises e on e.id = s.exercise_id
-    where s.exercise_id in ${sql(exerciseIds)}
-      and s.set_type != 'warmup'
-      and w.start_time >= now() - interval '8 weeks'
-    order by w.start_time asc
-  `;
-  const rows: ProgressionRow[] = rawRows.map((r) => ({ ...r, start_time: toISO(r.start_time) }));
-
-  const byExercise = new Map<string, { title: string; muscle: string; bySession: Map<string, ProgressionRow[]> }>();
-  for (const row of rows) {
-    if (!byExercise.has(row.exercise_id)) {
-      byExercise.set(row.exercise_id, { title: row.title, muscle: row.muscle, bySession: new Map() });
+      const muscle = muscleFor(ex.title);
+      if (!byExercise.has(ex.exercise_template_id)) {
+        byExercise.set(ex.exercise_template_id, { title: ex.title, muscle, bySession: new Map() });
+      }
+      const entry = byExercise.get(ex.exercise_template_id)!;
+      const key = w.start_time;
+      if (!entry.bySession.has(key)) entry.bySession.set(key, []);
+      entry.bySession.get(key)!.push(
+        ...workingSetsForEx.map((s) => ({ weight_kg: s.weight_kg, reps: s.reps, rpe: s.rpe }))
+      );
     }
-    const entry = byExercise.get(row.exercise_id)!;
-    const key = row.start_time;
-    if (!entry.bySession.has(key)) entry.bySession.set(key, []);
-    entry.bySession.get(key)!.push(row);
   }
 
   const result: ExerciseProgression[] = [];
   for (const [exerciseId, { title, muscle, bySession }] of byExercise) {
     const sessions: ExerciseSession[] = Array.from(bySession.entries())
+      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
       .map(([date, sets]) => {
         const rpes = sets.map((s) => s.rpe).filter((v): v is number => v != null);
         const weighted = sets.filter((s) => s.weight_kg != null);
@@ -214,16 +195,16 @@ function buildUserPrompt(data: WeeklyData): string {
 
   lines.push(`\n## This week's working sets per muscle vs. target`);
   const actualByMuscle = new Map(data.currentWeekVolume.map((v) => [v.muscle, v.sets]));
-  const allMuscles = Array.from(new Set([...Object.keys(VOLUME_TARGETS), ...actualByMuscle.keys()]));
+  const allMuscles = Array.from(new Set([...Object.keys(data.targets), ...actualByMuscle.keys()]));
   for (const muscle of allMuscles) {
-    const target = VOLUME_TARGETS[muscle];
+    const target = data.targets[muscle];
     lines.push(`- ${muscle}: ${actualByMuscle.get(muscle) ?? 0} sets (target ${target ? `${target.min}-${target.max}` : "n/a"})`);
   }
 
   lines.push(`\n## Intended weekly plan volume (from favorited/starred routines) per muscle vs. target`);
   const planByMuscle = new Map(data.planVolume.map((v) => [v.muscle, v.sets]));
   for (const muscle of allMuscles) {
-    const target = VOLUME_TARGETS[muscle];
+    const target = data.targets[muscle];
     lines.push(`- ${muscle}: ${planByMuscle.get(muscle) ?? 0} sets planned (target ${target ? `${target.min}-${target.max}` : "n/a"})`);
   }
 
@@ -248,7 +229,7 @@ function buildUserPrompt(data: WeeklyData): string {
   lines.push(`\n## Favorited routines structure (for proposing set-count edits)`);
   for (const r of data.favorites) {
     lines.push(`### Routine "${r.title}" (routineId: ${r.id})`);
-    const exercises = [...(r.raw.exercises ?? [])].sort((a, b) => a.index - b.index);
+    const exercises = [...(r.exercises ?? [])].sort((a, b) => a.index - b.index);
     exercises.forEach((ex: RoutineExercise) => {
       const workingSets = ex.sets.filter((s) => s.type !== "warmup").length;
       lines.push(`  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — currently ${workingSets} working sets`);
@@ -282,17 +263,18 @@ function parseReviewJson(text: string): { review: string; proposedEdits: Omit<Pr
   }
 }
 
-export async function generateWeeklyReview(): Promise<{ review: string; proposedEdits: ProposedEdit[] }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-
-  const data = await gatherWeeklyData();
+export async function generateWeeklyReview(
+  userId: string,
+  hevyApiKey: string,
+  anthropicApiKey: string
+): Promise<{ review: string; proposedEdits: ProposedEdit[] }> {
+  const data = await gatherWeeklyData(userId, hevyApiKey);
   const userPrompt = buildUserPrompt(data);
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      "x-api-key": apiKey,
+      "x-api-key": anthropicApiKey,
       "anthropic-version": "2023-06-01",
       "content-type": "application/json",
     },
@@ -326,7 +308,7 @@ export async function generateWeeklyReview(): Promise<{ review: string; proposed
     .filter((edit) => {
       const routine = favoriteById.get(edit.routineId);
       if (!routine) return false;
-      const exercises = routine.raw.exercises ?? [];
+      const exercises = routine.exercises ?? [];
       const ex = exercises.find((e) => e.index === edit.exerciseIndex);
       return !!ex && ex.title === edit.exerciseTitle;
     })
@@ -357,7 +339,7 @@ export function applyEditToRoutine(
   routine: Routine,
   edit: ProposedEdit
 ): { title: string; notes: string | null; exercises: HevyExerciseUpdate[] } {
-  const exercises = [...(routine.raw.exercises ?? [])].sort((a, b) => a.index - b.index);
+  const exercises = [...(routine.exercises ?? [])].sort((a, b) => a.index - b.index);
   const target = exercises.find((e) => e.index === edit.exerciseIndex);
   if (!target || target.title !== edit.exerciseTitle) {
     throw new Error("This routine changed since the review was generated — regenerate a new review before applying.");
@@ -390,5 +372,5 @@ export function applyEditToRoutine(
     };
   });
 
-  return { title: routine.title, notes: routine.raw.notes ?? null, exercises: updatedExercises };
+  return { title: routine.title, notes: routine.notes ?? null, exercises: updatedExercises };
 }

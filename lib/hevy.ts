@@ -1,9 +1,7 @@
 const API_BASE = "https://api.hevyapp.com/v1";
 
-function headers() {
-  const key = process.env.HEVY_API_KEY;
-  if (!key) throw new Error("HEVY_API_KEY is not set");
-  return { "api-key": key, "Content-Type": "application/json" };
+function headers(apiKey: string) {
+  return { "api-key": apiKey, "Content-Type": "application/json" };
 }
 
 export type HevySet = {
@@ -30,21 +28,23 @@ export type HevyExercise = {
 export type HevyWorkout = {
   id: string;
   title: string;
+  description?: string | null;
   start_time: string;
   end_time: string;
+  is_private?: boolean;
   exercises: HevyExercise[];
 };
 
 // Fetches all workouts, paging until Hevy returns an empty page.
 // Pass `since` (ISO date) to only pull recent workouts on subsequent syncs.
-export async function fetchAllWorkouts(since?: string): Promise<HevyWorkout[]> {
+export async function fetchAllWorkouts(apiKey: string, since?: string): Promise<HevyWorkout[]> {
   const all: HevyWorkout[] = [];
   let page = 1;
   const pageSize = 10; // Hevy's documented max per page for /workouts
 
   while (true) {
     const res = await fetch(`${API_BASE}/workouts?page=${page}&pageSize=${pageSize}`, {
-      headers: headers(),
+      headers: headers(apiKey),
       cache: "no-store",
     });
     if (!res.ok) {
@@ -63,6 +63,47 @@ export async function fetchAllWorkouts(since?: string): Promise<HevyWorkout[]> {
   }
 
   return since ? all.filter((w) => w.start_time >= since) : all;
+}
+
+export async function fetchWorkout(apiKey: string, workoutId: string): Promise<HevyWorkout> {
+  const res = await fetch(`${API_BASE}/workouts/${workoutId}`, {
+    headers: headers(apiKey),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.workout ?? data;
+}
+
+// Unlike routines, the workout PUT endpoint rejects `rest_seconds` on
+// exercises ("Unrecognized key(s) in object") — omit it here.
+export type HevyWorkoutExerciseUpdate = Omit<HevyExerciseUpdate, "rest_seconds">;
+
+// Overwrites a workout's full body, mirroring updateRoutine below: Hevy's PUT
+// endpoint replaces the whole workout, so callers must pass the complete
+// desired state, not a partial diff.
+export async function updateWorkout(
+  apiKey: string,
+  workoutId: string,
+  payload: {
+    title: string;
+    description: string | null;
+    start_time: string;
+    end_time: string;
+    is_private: boolean;
+    exercises: HevyWorkoutExerciseUpdate[];
+  }
+): Promise<HevyWorkout> {
+  const res = await fetch(`${API_BASE}/workouts/${workoutId}`, {
+    method: "PUT",
+    headers: headers(apiKey),
+    body: JSON.stringify({ workout: payload }),
+  });
+  if (!res.ok) {
+    throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+  }
+  const data = await res.json();
+  return data.workout ?? data;
 }
 
 export type HevyRoutine = {
@@ -94,12 +135,13 @@ export type HevyExerciseUpdate = {
 // whole routine body, so callers must pass the complete desired exercise list,
 // not a partial diff.
 export async function updateRoutine(
+  apiKey: string,
   routineId: string,
   payload: { title: string; notes: string | null; exercises: HevyExerciseUpdate[] }
 ): Promise<HevyRoutine> {
   const res = await fetch(`${API_BASE}/routines/${routineId}`, {
     method: "PUT",
-    headers: headers(),
+    headers: headers(apiKey),
     body: JSON.stringify({ routine: payload }),
   });
   if (!res.ok) {
@@ -109,14 +151,24 @@ export async function updateRoutine(
   return data.routine ?? data;
 }
 
-export async function fetchAllRoutines(): Promise<HevyRoutine[]> {
+export async function fetchRoutine(apiKey: string, routineId: string): Promise<HevyRoutine> {
+  const res = await fetch(`${API_BASE}/routines/${routineId}`, {
+    headers: headers(apiKey),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.routine ?? data;
+}
+
+export async function fetchAllRoutines(apiKey: string): Promise<HevyRoutine[]> {
   const all: HevyRoutine[] = [];
   let page = 1;
   const pageSize = 10; // Hevy's documented max per page for /routines
 
   while (true) {
     const res = await fetch(`${API_BASE}/routines?page=${page}&pageSize=${pageSize}`, {
-      headers: headers(),
+      headers: headers(apiKey),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);

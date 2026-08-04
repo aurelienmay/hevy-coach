@@ -16,6 +16,10 @@ export function startOfMonth(d: Date = new Date(), monthsAgo = 0): Date {
   return new Date(d.getFullYear(), d.getMonth() - monthsAgo, 1, 0, 0, 0, 0);
 }
 
+export function addWeeks(d: Date, weeks: number): Date {
+  return new Date(d.getTime() + weeks * 7 * 24 * 60 * 60 * 1000);
+}
+
 export function workingSets(w: HevyWorkout) {
   return w.exercises.flatMap((ex) => ex.sets.filter((s) => s.type !== "warmup"));
 }

@@ -1,4 +1,3 @@
-import { VOLUME_TARGETS } from "@/lib/volumeTargets";
 import type { MuscleVolume } from "@/lib/planVolume";
 
 const STATUS_COLOR: Record<"low" | "ok" | "high", string> = {
@@ -14,14 +13,20 @@ function statusFor(sets: number, target?: { min: number; max: number }): "low" |
   return "ok";
 }
 
-export default function PlanVolumeSummary({ volume }: { volume: MuscleVolume[] }) {
+export default function PlanVolumeSummary({
+  volume,
+  targets,
+}: {
+  volume: MuscleVolume[];
+  targets: Record<string, { min: number; max: number }>;
+}) {
   const byMuscle = new Map(volume.map((v) => [v.muscle, v.sets]));
-  const muscles = Array.from(new Set([...Object.keys(VOLUME_TARGETS), ...byMuscle.keys()]));
+  const muscles = Array.from(new Set([...Object.keys(targets), ...byMuscle.keys()]));
 
   const rows = muscles
     .map((muscle) => {
       const sets = byMuscle.get(muscle) ?? 0;
-      const target = VOLUME_TARGETS[muscle];
+      const target = targets[muscle];
       return { muscle, sets, target, status: statusFor(sets, target) };
     })
     .sort((a, b) => b.sets - a.sets);

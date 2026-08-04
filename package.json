@@ -5,21 +5,20 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "sync": "node --env-file=.env.local --import tsx scripts/sync.ts"
+    "start": "next start"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.5.1",
+    "@supabase/supabase-js": "^2.45.4",
     "next": "14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "postgres": "^3.4.4",
     "recharts": "^2.12.7"
   },
   "devDependencies": {
-    "typescript": "^5.5.4",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "tsx": "^4.16.2"
+    "typescript": "^5.5.4"
   }
 }

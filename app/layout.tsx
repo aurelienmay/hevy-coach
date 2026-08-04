@@ -16,6 +16,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           color: "#e6e6e6",
         }}
       >
+        <style>{`
+          @keyframes skeleton-pulse {
+            0% { background-position: 100% 50%; }
+            100% { background-position: 0 50%; }
+          }
+        `}</style>
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px", display: "flex", gap: 32 }}>
           <Sidebar />
           <div style={{ flex: 1, minWidth: 0 }}>{children}</div>

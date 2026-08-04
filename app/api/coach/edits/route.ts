@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "@/lib/db";
-import { updateRoutine } from "@/lib/hevy";
-import { muscleFor } from "@/lib/muscleMap";
+import { createClient } from "@/lib/supabase/server";
+import { requireHevyApiKey } from "@/lib/currentUser";
+import { fetchAllRoutines, updateRoutine } from "@/lib/hevy";
 import { applyEditToRoutine, type ProposedEdit } from "@/lib/coach";
-import type { Routine } from "@/components/RoutineCard";
 
 export async function POST(req: NextRequest) {
   const { reviewId, editId, action } = await req.json();
@@ -11,9 +10,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "action must be 'apply' or 'reject'" }, { status: 400 });
   }
 
-  const [reviewRow] = await sql<{ id: string; proposed_edits: ProposedEdit[] }[]>`
-    select id, proposed_edits from coach_reviews where id = ${reviewId}
-  `;
+  const { apiKey } = await requireHevyApiKey();
+  const supabase = createClient();
+
+  const { data: reviewRow } = await supabase
+    .from("coach_reviews")
+    .select("id, proposed_edits")
+    .eq("id", reviewId)
+    .single<{ id: string; proposed_edits: ProposedEdit[] }>();
   if (!reviewRow) {
     return NextResponse.json({ error: "review not found" }, { status: 404 });
   }
@@ -28,41 +32,31 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "apply") {
-    const [routine] = await sql<Routine[]>`
-      select id, title, updated_at, is_favorite, raw from routines where id = ${edit.routineId}
-    `;
+    const routines = await fetchAllRoutines(apiKey);
+    const routine = routines.find((r) => r.id === edit.routineId);
     if (!routine) {
       return NextResponse.json({ error: "routine no longer found" }, { status: 404 });
     }
 
-    let updated;
     try {
-      const payload = applyEditToRoutine(routine, edit);
-      updated = await updateRoutine(edit.routineId, payload);
+      const payload = applyEditToRoutine({ ...routine, is_favorite: true }, edit);
+      await updateRoutine(apiKey, edit.routineId, payload);
     } catch (err) {
       return NextResponse.json({ error: err instanceof Error ? err.message : "failed to apply edit" }, { status: 400 });
-    }
-
-    await sql`
-      update routines
-      set title = ${updated.title}, updated_at = ${updated.updated_at}, raw = ${sql.json(updated)}
-      where id = ${edit.routineId}
-    `;
-
-    for (const ex of updated.exercises ?? []) {
-      await sql`
-        insert into exercises (id, title, muscle)
-        values (${ex.exercise_template_id}, ${ex.title}, ${muscleFor(ex.title)})
-        on conflict (id) do nothing
-      `;
     }
   }
 
   const updatedEdits = edits.map((e) => (e.id === editId ? { ...e, status: action === "apply" ? "applied" : "rejected" } : e));
-  const [row] = await sql`
-    update coach_reviews set proposed_edits = ${sql.json(updatedEdits)} where id = ${reviewId}
-    returning id, week_start, review, proposed_edits, created_at
-  `;
+  const { data: row, error } = await supabase
+    .from("coach_reviews")
+    .update({ proposed_edits: updatedEdits })
+    .eq("id", reviewId)
+    .select("id, week_start, review, proposed_edits, created_at")
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json(row);
 }

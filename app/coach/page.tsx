@@ -1,4 +1,5 @@
-import { sql } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { requireCoachApiKeys } from "@/lib/currentUser";
 import CoachPanel from "@/components/CoachPanel";
 import type { ProposedEdit } from "@/lib/coach";
 
@@ -12,16 +13,18 @@ export type CoachReview = {
   created_at: string;
 };
 
-async function getPastReviews() {
-  return sql<CoachReview[]>`
-    select id, week_start, review, proposed_edits, created_at
-    from coach_reviews
-    order by created_at desc
-    limit 20
-  `;
+async function getPastReviews(): Promise<CoachReview[]> {
+  const supabase = createClient();
+  const { data } = await supabase
+    .from("coach_reviews")
+    .select("id, week_start, review, proposed_edits, created_at")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  return data ?? [];
 }
 
 export default async function CoachPage() {
+  await requireCoachApiKeys();
   const reviews = await getPastReviews();
 
   return (

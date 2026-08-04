@@ -3,13 +3,31 @@
 import { useState } from "react";
 import RoutineCard, { type Routine } from "@/components/RoutineCard";
 
-export default function OtherRoutines({ routines }: { routines: Routine[] }) {
-  const [shown, setShown] = useState(false);
+export default function OtherRoutines() {
+  const [routines, setRoutines] = useState<Routine[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
 
-  if (!shown) {
+  async function loadOthers() {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch("/api/routines/others");
+      if (!res.ok) throw new Error("failed to load");
+      const { routines: others } = await res.json();
+      setRoutines(others);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (routines === null) {
     return (
       <button
-        onClick={() => setShown(true)}
+        onClick={loadOthers}
+        disabled={loading}
         style={{
           background: "none",
           border: "1px solid #333",
@@ -17,12 +35,16 @@ export default function OtherRoutines({ routines }: { routines: Routine[] }) {
           padding: "8px 14px",
           color: "#ccc",
           fontSize: 13,
-          cursor: "pointer",
+          cursor: loading ? "default" : "pointer",
         }}
       >
-        Show all routines ({routines.length}) to add a favorite
+        {loading ? "Loading…" : error ? "Failed to load — try again" : "Show other routines to add a favorite"}
       </button>
     );
+  }
+
+  if (routines.length === 0) {
+    return <p style={{ color: "#888", fontSize: 13 }}>No other routines.</p>;
   }
 
   return (

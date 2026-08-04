@@ -1,18 +1,29 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { requireCoachApiKeys } from "@/lib/currentUser";
 import { generateWeeklyReview } from "@/lib/coach";
+import { startOfWeek } from "@/lib/workoutStats";
 
 export const maxDuration = 60;
 
 export async function POST() {
   try {
-    const { review, proposedEdits } = await generateWeeklyReview();
+    const { userId, hevyApiKey, anthropicApiKey } = await requireCoachApiKeys();
+    const { review, proposedEdits } = await generateWeeklyReview(userId, hevyApiKey, anthropicApiKey);
 
-    const [row] = await sql`
-      insert into coach_reviews (id, week_start, review, proposed_edits)
-      values (${crypto.randomUUID()}, date_trunc('week', now()), ${review}, ${sql.json(proposedEdits)})
-      returning id, week_start, review, proposed_edits, created_at
-    `;
+    const supabase = createClient();
+    const { data: row, error } = await supabase
+      .from("coach_reviews")
+      .insert({
+        user_id: userId,
+        week_start: startOfWeek().toISOString(),
+        review,
+        proposed_edits: proposedEdits,
+      })
+      .select("id, week_start, review, proposed_edits, created_at")
+      .single();
+
+    if (error) throw error;
 
     return NextResponse.json(row);
   } catch (err) {

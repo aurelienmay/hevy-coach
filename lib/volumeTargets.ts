@@ -1,7 +1,8 @@
 // Rough weekly working-set targets per muscle group, based on common
 // hypertrophy training guidelines (roughly 10-20 sets/week for most muscles,
-// less for smaller/assistance muscles). Tune these to your own needs.
-export const VOLUME_TARGETS: Record<string, { min: number; max: number }> = {
+// less for smaller/assistance muscles). Used as the fallback when a user
+// hasn't customized their own targets in /settings.
+export const DEFAULT_VOLUME_TARGETS: Record<string, { min: number; max: number }> = {
   chest: { min: 10, max: 20 },
   back: { min: 10, max: 20 },
   shoulders: { min: 10, max: 20 },
