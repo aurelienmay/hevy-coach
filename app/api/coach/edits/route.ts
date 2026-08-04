@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireHevyApiKey } from "@/lib/currentUser";
-import { fetchAllRoutines, updateRoutine } from "@/lib/hevy";
+import { fetchAllRoutines, updateRoutine, HevyApiError } from "@/lib/hevy";
 import { applyEditToRoutine, type ProposedEdit } from "@/lib/coach";
 
 export async function POST(req: NextRequest) {
-  const { reviewId, editId, action } = await req.json();
+  let body: { reviewId?: unknown; editId?: unknown; action?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const { reviewId, editId, action } = body;
+
+  if (typeof reviewId !== "string" || !reviewId) {
+    return NextResponse.json({ error: "reviewId is required" }, { status: 400 });
+  }
+  if (typeof editId !== "string" || !editId) {
+    return NextResponse.json({ error: "editId is required" }, { status: 400 });
+  }
   if (action !== "apply" && action !== "reject") {
     return NextResponse.json({ error: "action must be 'apply' or 'reject'" }, { status: 400 });
   }
 
   const { apiKey } = await requireHevyApiKey();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data: reviewRow } = await supabase
     .from("coach_reviews")
@@ -42,7 +55,8 @@ export async function POST(req: NextRequest) {
       const payload = applyEditToRoutine({ ...routine, is_favorite: true }, edit);
       await updateRoutine(apiKey, edit.routineId, payload);
     } catch (err) {
-      return NextResponse.json({ error: err instanceof Error ? err.message : "failed to apply edit" }, { status: 400 });
+      const status = err instanceof HevyApiError ? err.status : 400;
+      return NextResponse.json({ error: err instanceof Error ? err.message : "failed to apply edit" }, { status });
     }
   }
 

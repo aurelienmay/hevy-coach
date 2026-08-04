@@ -1,6 +1,7 @@
 import Link from "next/link";
 import VolumeChart from "@/components/VolumeChart";
-import { fetchAllWorkouts } from "@/lib/hevy";
+import HevyError from "@/components/HevyError";
+import { fetchAllWorkouts, type HevyWorkout } from "@/lib/hevy";
 import { requireHevyApiKey } from "@/lib/currentUser";
 import { addWeeks, muscleVolume, startOfWeek, totalSetsCount, workingSetsCount, workoutsInRange } from "@/lib/workoutStats";
 
@@ -17,14 +18,27 @@ function formatRange(from: Date, to: Date) {
 export default async function OverviewPage({
   searchParams,
 }: {
-  searchParams: { week?: string };
+  searchParams: Promise<{ week?: string }>;
 }) {
+  const { week } = await searchParams;
   const { apiKey } = await requireHevyApiKey();
-  const weekOffset = Math.min(0, Number(searchParams.week ?? 0) || 0);
+  const weekOffset = Math.min(0, Number(week ?? 0) || 0);
   const weekStart = addWeeks(startOfWeek(), weekOffset);
   const weekEnd = addWeeks(weekStart, 1);
 
-  const workouts = await fetchAllWorkouts(apiKey, weekStart.toISOString());
+  let workouts: HevyWorkout[];
+  try {
+    workouts = await fetchAllWorkouts(apiKey, weekStart.toISOString());
+  } catch (err) {
+    return (
+      <main>
+        <h1 style={{ fontSize: 22, marginBottom: 20 }}>
+          {weekOffset === 0 ? "This week" : formatRange(weekStart, weekEnd)} — working sets only
+        </h1>
+        <HevyError error={err} />
+      </main>
+    );
+  }
   const thisWeek = workoutsInRange(workouts, weekStart, weekEnd);
   const sessions = [...thisWeek].sort(
     (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()

@@ -5,7 +5,7 @@ import { DEFAULT_VOLUME_TARGETS } from "@/lib/volumeTargets";
 // Middleware already guarantees a signed-in user for every non-public route,
 // so this only needs to read the session, not redirect on missing auth.
 export async function getUser() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -17,7 +17,7 @@ export async function getUser() {
 // to add one if they haven't yet.
 export async function requireHevyApiKey(): Promise<{ userId: string; apiKey: string }> {
   const user = await getUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data } = await supabase
     .from("user_settings")
@@ -36,7 +36,7 @@ export async function requireHevyApiKey(): Promise<{ userId: string; apiKey: str
 // (each user's own) to generate the review -- so it's never billed to us.
 export async function requireCoachApiKeys(): Promise<{ userId: string; hevyApiKey: string; anthropicApiKey: string }> {
   const user = await getUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const { data } = await supabase
     .from("user_settings")
@@ -57,7 +57,7 @@ export async function requireCoachApiKeys(): Promise<{ userId: string; hevyApiKe
 export type VolumeTargets = Record<string, { min: number; max: number }>;
 
 export async function getVolumeTargets(userId: string): Promise<VolumeTargets> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase
     .from("user_settings")
     .select("volume_targets")

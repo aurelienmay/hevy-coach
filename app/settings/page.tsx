@@ -7,10 +7,11 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: { needsKey?: string; needsAnthropicKey?: string };
+  searchParams: Promise<{ needsKey?: string; needsAnthropicKey?: string }>;
 }) {
+  const { needsKey, needsAnthropicKey } = await searchParams;
   const user = await getUser();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [{ data }, targets] = await Promise.all([
     supabase
@@ -28,12 +29,12 @@ export default async function SettingsPage({
         Your API keys and weekly volume targets — used across the whole dashboard.
       </p>
 
-      {searchParams.needsKey && (
+      {needsKey && (
         <p style={{ color: "#f7b84f", fontSize: 13, marginBottom: 20 }}>
           Add your Hevy API key below to start using the dashboard.
         </p>
       )}
-      {searchParams.needsAnthropicKey && (
+      {needsAnthropicKey && (
         <p style={{ color: "#f7b84f", fontSize: 13, marginBottom: 20 }}>
           Add your own Anthropic API key below to use the AI Coach.
         </p>

@@ -14,7 +14,7 @@ export type CoachReview = {
 };
 
 async function getPastReviews(): Promise<CoachReview[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data } = await supabase
     .from("coach_reviews")
     .select("id, week_start, review, proposed_edits, created_at")

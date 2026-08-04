@@ -1,13 +1,25 @@
-import { fetchAllWorkouts } from "@/lib/hevy";
+import { fetchAllWorkouts, type HevyWorkout } from "@/lib/hevy";
 import { requireHevyApiKey } from "@/lib/currentUser";
 import { startOfMonth, totalSetsCount, workingSetsCount } from "@/lib/workoutStats";
 import SessionTitleEditor from "@/components/SessionTitleEditor";
+import HevyError from "@/components/HevyError";
 
 export const dynamic = "force-dynamic";
 
 export default async function SessionsPage() {
   const { apiKey } = await requireHevyApiKey();
-  const workouts = await fetchAllWorkouts(apiKey, startOfMonth(new Date(), 1).toISOString());
+
+  let workouts: HevyWorkout[];
+  try {
+    workouts = await fetchAllWorkouts(apiKey, startOfMonth(new Date(), 1).toISOString());
+  } catch (err) {
+    return (
+      <main>
+        <h1 style={{ fontSize: 22, marginBottom: 16 }}>Sessions</h1>
+        <HevyError error={err} />
+      </main>
+    );
+  }
   const sessions = [...workouts].sort(
     (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
   );

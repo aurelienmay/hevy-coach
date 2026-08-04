@@ -16,13 +16,16 @@ const inputStyle: React.CSSProperties = {
 
 export default function SettingsForm({
   initialApiKey,
+  initialAnthropicApiKey,
   initialTargets,
 }: {
   initialApiKey: string;
+  initialAnthropicApiKey: string;
   initialTargets: VolumeTargets;
 }) {
   const router = useRouter();
   const [apiKey, setApiKey] = useState(initialApiKey);
+  const [anthropicApiKey, setAnthropicApiKey] = useState(initialAnthropicApiKey);
   const [targets, setTargets] = useState<VolumeTargets>(initialTargets);
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -44,7 +47,11 @@ export default function SettingsForm({
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hevy_api_key: apiKey, volume_targets: targets }),
+      body: JSON.stringify({
+        hevy_api_key: apiKey,
+        anthropic_api_key: anthropicApiKey,
+        volume_targets: targets,
+      }),
     });
 
     setPending(false);
@@ -73,6 +80,21 @@ export default function SettingsForm({
       />
       <p style={{ color: "#666", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
         Hevy app → Settings → Developer → generate an API key (requires Hevy Pro).
+      </p>
+
+      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+        Anthropic API key <span style={{ color: "#666" }}>(optional)</span>
+      </label>
+      <input
+        type="password"
+        placeholder="Paste your Anthropic API key"
+        value={anthropicApiKey}
+        onChange={(e) => { setAnthropicApiKey(e.target.value); setSaved(false); }}
+        style={{ ...inputStyle, marginBottom: 24 }}
+      />
+      <p style={{ color: "#666", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
+        console.anthropic.com → API Keys. Only needed for the AI Coach page, and it's your
+        own key — usage is billed to your Anthropic account, not shared with other users.
       </p>
 
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Weekly volume targets</h2>

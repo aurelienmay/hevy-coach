@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   const { userId, apiKey } = await requireHevyApiKey();
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const [routines, { data: favoriteRows }] = await Promise.all([
     fetchAllRoutines(apiKey),

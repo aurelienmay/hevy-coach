@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireHevyApiKey } from "@/lib/currentUser";
-import { fetchWorkout, updateWorkout } from "@/lib/hevy";
+import { fetchWorkout, updateWorkout, HevyApiError } from "@/lib/hevy";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { apiKey } = await requireHevyApiKey();
-  const { title } = await req.json();
+
+  let body: { title?: unknown };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  const { title } = body;
 
   if (typeof title !== "string" || !title.trim()) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
   }
 
   try {
-    const workout = await fetchWorkout(apiKey, params.id);
+    const workout = await fetchWorkout(apiKey, id);
     const payload = {
       title: title.trim(),
       description: workout.description ?? null,
@@ -32,10 +40,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         })),
       })),
     };
-    const updated = await updateWorkout(apiKey, params.id, payload);
+    const updated = await updateWorkout(apiKey, id, payload);
     return NextResponse.json({ workout: updated });
   } catch (err) {
     console.error("PATCH /api/sessions failed:", err);
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    const status = err instanceof HevyApiError ? err.status : 500;
+    return NextResponse.json({ error: (err as Error).message }, { status });
   }
 }

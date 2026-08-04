@@ -1,9 +1,10 @@
 import { fetchRoutine } from "@/lib/hevy";
-import { requireHevyApiKey, getVolumeTargets } from "@/lib/currentUser";
+import { requireHevyApiKey, getVolumeTargets, type VolumeTargets } from "@/lib/currentUser";
 import { createClient } from "@/lib/supabase/server";
 import RoutineCard, { type Routine } from "@/components/RoutineCard";
 import OtherRoutines from "@/components/OtherRoutines";
 import PlanVolumeSummary from "@/components/PlanVolumeSummary";
+import HevyError from "@/components/HevyError";
 import { computePlanVolume } from "@/lib/planVolume";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 // every routine in their Hevy account. The rest are fetched on demand by
 // OtherRoutines when the user asks to browse them.
 async function getFavoriteRoutines(userId: string, apiKey: string): Promise<Routine[]> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: favoriteRows } = await supabase
     .from("favorite_routines")
     .select("routine_id")
@@ -27,10 +28,22 @@ async function getFavoriteRoutines(userId: string, apiKey: string): Promise<Rout
 
 export default async function RoutinesPage() {
   const { userId, apiKey } = await requireHevyApiKey();
-  const [favorites, targets] = await Promise.all([
-    getFavoriteRoutines(userId, apiKey),
-    getVolumeTargets(userId),
-  ]);
+
+  let favorites: Routine[];
+  let targets: VolumeTargets;
+  try {
+    [favorites, targets] = await Promise.all([
+      getFavoriteRoutines(userId, apiKey),
+      getVolumeTargets(userId),
+    ]);
+  } catch (err) {
+    return (
+      <main>
+        <h1 style={{ fontSize: 22, marginBottom: 4 }}>Routines</h1>
+        <HevyError error={err} />
+      </main>
+    );
+  }
   const planVolume = computePlanVolume(favorites);
 
   return (

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireCoachApiKeys } from "@/lib/currentUser";
 import { generateWeeklyReview } from "@/lib/coach";
 import { startOfWeek } from "@/lib/workoutStats";
+import { HevyApiError } from "@/lib/hevy";
 
 export const maxDuration = 60;
 
@@ -11,7 +12,7 @@ export async function POST() {
     const { userId, hevyApiKey, anthropicApiKey } = await requireCoachApiKeys();
     const { review, proposedEdits } = await generateWeeklyReview(userId, hevyApiKey, anthropicApiKey);
 
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data: row, error } = await supabase
       .from("coach_reviews")
       .insert({
@@ -28,6 +29,7 @@ export async function POST() {
     return NextResponse.json(row);
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status: 500 });
+    const status = err instanceof HevyApiError ? err.status : 500;
+    return NextResponse.json({ error: err instanceof Error ? err.message : "unknown error" }, { status });
   }
 }

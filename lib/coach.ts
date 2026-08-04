@@ -46,7 +46,7 @@ type WeeklyData = {
 };
 
 async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<WeeklyData> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const [allRoutines, workouts, { data: favoriteRows }, targets] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
     fetchAllWorkouts(hevyApiKey, new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000).toISOString()),

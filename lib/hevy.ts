@@ -1,5 +1,17 @@
 const API_BASE = "https://api.hevyapp.com/v1";
 
+// Thrown whenever Hevy returns a non-OK response, carrying the status code so
+// callers can tell "your API key is bad" (401/403) apart from "Hevy is down
+// or rate-limiting you" (429/5xx) instead of showing one generic failure.
+export class HevyApiError extends Error {
+  status: number;
+  constructor(status: number, body: string) {
+    super(`Hevy API error ${status}: ${body}`);
+    this.name = "HevyApiError";
+    this.status = status;
+  }
+}
+
 function headers(apiKey: string) {
   return { "api-key": apiKey, "Content-Type": "application/json" };
 }
@@ -48,7 +60,7 @@ export async function fetchAllWorkouts(apiKey: string, since?: string): Promise<
       cache: "no-store",
     });
     if (!res.ok) {
-      throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+      throw new HevyApiError(res.status, await res.text());
     }
     const data = await res.json();
     const batch: HevyWorkout[] = data.workouts ?? [];
@@ -70,7 +82,7 @@ export async function fetchWorkout(apiKey: string, workoutId: string): Promise<H
     headers: headers(apiKey),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new HevyApiError(res.status, await res.text());
   const data = await res.json();
   return data.workout ?? data;
 }
@@ -100,7 +112,7 @@ export async function updateWorkout(
     body: JSON.stringify({ workout: payload }),
   });
   if (!res.ok) {
-    throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+    throw new HevyApiError(res.status, await res.text());
   }
   const data = await res.json();
   return data.workout ?? data;
@@ -145,7 +157,7 @@ export async function updateRoutine(
     body: JSON.stringify({ routine: payload }),
   });
   if (!res.ok) {
-    throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+    throw new HevyApiError(res.status, await res.text());
   }
   const data = await res.json();
   return data.routine ?? data;
@@ -156,7 +168,7 @@ export async function fetchRoutine(apiKey: string, routineId: string): Promise<H
     headers: headers(apiKey),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new HevyApiError(res.status, await res.text());
   const data = await res.json();
   return data.routine ?? data;
 }
@@ -171,7 +183,7 @@ export async function fetchAllRoutines(apiKey: string): Promise<HevyRoutine[]> {
       headers: headers(apiKey),
       cache: "no-store",
     });
-    if (!res.ok) throw new Error(`Hevy API error ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new HevyApiError(res.status, await res.text());
     const data = await res.json();
     const batch: HevyRoutine[] = data.routines ?? [];
     if (batch.length === 0) break;

@@ -4,8 +4,8 @@ import { cookies } from "next/headers";
 // Server Component / Route Handler client -- carries the signed-in user's
 // session cookie, so every query runs as that user and Postgres RLS scopes
 // results to their own rows automatically.
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
