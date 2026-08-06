@@ -1,8 +1,9 @@
 import Link from "next/link";
 import VolumeChart from "@/components/VolumeChart";
 import HevyError from "@/components/HevyError";
+import PlanVolumeSummary from "@/components/PlanVolumeSummary";
 import { fetchAllWorkouts, type HevyWorkout } from "@/lib/hevy";
-import { requireHevyApiKey } from "@/lib/currentUser";
+import { requireHevyApiKey, getVolumeTargets } from "@/lib/currentUser";
 import { addWeeks, muscleVolume, startOfWeek, totalSetsCount, workingSetsCount, workoutsInRange } from "@/lib/workoutStats";
 
 export const dynamic = "force-dynamic";
@@ -21,14 +22,18 @@ export default async function OverviewPage({
   searchParams: Promise<{ week?: string }>;
 }) {
   const { week } = await searchParams;
-  const { apiKey } = await requireHevyApiKey();
+  const { userId, apiKey } = await requireHevyApiKey();
   const weekOffset = Math.min(0, Number(week ?? 0) || 0);
   const weekStart = addWeeks(startOfWeek(), weekOffset);
   const weekEnd = addWeeks(weekStart, 1);
 
   let workouts: HevyWorkout[];
+  let targets;
   try {
-    workouts = await fetchAllWorkouts(apiKey, weekStart.toISOString());
+    [workouts, targets] = await Promise.all([
+      fetchAllWorkouts(apiKey, weekStart.toISOString()),
+      getVolumeTargets(userId),
+    ]);
   } catch (err) {
     return (
       <main>
@@ -71,6 +76,13 @@ export default async function OverviewPage({
       <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
         {formatRange(weekStart, weekEnd)} · warm-up sets excluded.
       </p>
+
+      <PlanVolumeSummary
+        volume={volume}
+        targets={targets}
+        title="Sets done vs. weekly target"
+        description="Working sets logged so far this week per muscle, vs. your weekly target."
+      />
 
       {volume.length === 0 ? (
         <p style={{ color: "#888" }}>No working sets logged this week.</p>

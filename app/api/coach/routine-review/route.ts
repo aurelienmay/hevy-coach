@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireCoachApiKeys } from "@/lib/currentUser";
-import { generateWeeklyReview } from "@/lib/coach";
+import { generateRoutinePlanReview } from "@/lib/coach";
 import { startOfWeek } from "@/lib/workoutStats";
 import { HevyApiError } from "@/lib/hevy";
 
@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function POST() {
   try {
     const { userId, hevyApiKey, anthropicApiKey } = await requireCoachApiKeys();
-    const { review, proposedEdits, proposedTargetEdits } = await generateWeeklyReview(userId, hevyApiKey, anthropicApiKey);
+    const { review, proposedEdits, proposedTargetEdits } = await generateRoutinePlanReview(userId, hevyApiKey, anthropicApiKey);
 
     const supabase = await createClient();
     const { data: row, error } = await supabase
@@ -18,7 +18,7 @@ export async function POST() {
       .insert({
         user_id: userId,
         week_start: startOfWeek().toISOString(),
-        review_type: "performance",
+        review_type: "plan",
         review,
         proposed_edits: proposedEdits,
         proposed_target_edits: proposedTargetEdits,

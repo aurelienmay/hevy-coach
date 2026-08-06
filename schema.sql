@@ -28,8 +28,10 @@ create table coach_reviews (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   week_start timestamptz not null,
+  review_type text not null default 'performance' check (review_type in ('performance', 'plan')), -- 'performance' = actual-week review, 'plan' = favorited-routines-only design review
   review text not null,           -- markdown analysis + recommendations
-  proposed_edits jsonb not null,  -- array of {id, routineId, routineTitle, exerciseIndex, exerciseTitle, action, count, rationale, status}
+  proposed_edits jsonb not null,  -- array of {id, routineId, routineTitle, exerciseIndex, exerciseTitle, action, count, newWeightKg, newRestSeconds, rationale, status}
+  proposed_target_edits jsonb not null default '[]', -- array of {id, muscle, currentMin, currentMax, newMin, newMax, rationale, status}
   created_at timestamptz not null default now()
 );
 

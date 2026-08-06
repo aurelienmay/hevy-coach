@@ -41,6 +41,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Middleware already contacted the Supabase Auth server to verify this
+  // request's JWT -- forward the verified id so Server Components can skip
+  // doing that same network round-trip a second time on every navigation.
+  if (user) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-user-id", user.id);
+    const response = NextResponse.next({ request: { headers: requestHeaders } });
+    supabaseResponse.cookies.getAll().forEach((cookie) => response.cookies.set(cookie));
+    return response;
+  }
+
   return supabaseResponse;
 }
 

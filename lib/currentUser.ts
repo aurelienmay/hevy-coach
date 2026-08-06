@@ -1,10 +1,16 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_VOLUME_TARGETS } from "@/lib/volumeTargets";
 
-// Middleware already guarantees a signed-in user for every non-public route,
-// so this only needs to read the session, not redirect on missing auth.
-export async function getUser() {
+// Middleware already contacts the Supabase Auth server to verify the JWT and
+// guarantees a signed-in user for every non-public route -- it forwards the
+// verified id via the x-user-id header so pages don't pay for that same
+// network round-trip a second time on every navigation.
+export async function getUser(): Promise<{ id: string }> {
+  const userId = (await headers()).get("x-user-id");
+  if (userId) return { id: userId };
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -66,4 +72,23 @@ export async function getVolumeTargets(userId: string): Promise<VolumeTargets> {
 
   const overrides = (data?.volume_targets as VolumeTargets | null) ?? {};
   return { ...DEFAULT_VOLUME_TARGETS, ...overrides };
+}
+
+// Merges a single muscle's new min/max into the user's volume_targets override
+// jsonb, leaving every other muscle's override (or lack of one) untouched.
+export async function setVolumeTargetOverride(userId: string, muscle: string, range: { min: number; max: number }): Promise<void> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("volume_targets")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const overrides = (data?.volume_targets as VolumeTargets | null) ?? {};
+  const updated = { ...overrides, [muscle]: range };
+
+  const { error } = await supabase
+    .from("user_settings")
+    .upsert({ user_id: userId, volume_targets: updated }, { onConflict: "user_id" });
+  if (error) throw error;
 }

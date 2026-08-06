@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
@@ -12,6 +12,18 @@ const LINKS = [
 ];
 
 const AUTH_PATHS = ["/login", "/signup", "/auth"];
+
+// Renders inside the Link it belongs to, so useLinkStatus can flip this
+// link's own style the instant it's clicked -- before the next page's data
+// has even started loading. Without this, usePathname (and therefore the
+// active-link highlight) only updates once navigation fully completes, so a
+// click looked like nothing happened and people would click again.
+function NavLinkLabel({ label, active }: { label: string; active: boolean }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span style={{ opacity: pending ? 0.5 : 1, color: active ? "#fff" : "#9ecbff" }}>{label}</span>
+  );
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -30,12 +42,11 @@ export default function Sidebar() {
               padding: "8px 12px",
               borderRadius: 6,
               fontSize: 14,
-              color: active ? "#fff" : "#9ecbff",
               background: active ? "#1a2230" : "transparent",
               textDecoration: "none",
             }}
           >
-            {link.label}
+            <NavLinkLabel label={link.label} active={active} />
           </Link>
         );
       })}

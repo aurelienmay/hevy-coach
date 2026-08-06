@@ -16,9 +16,13 @@ function statusFor(sets: number, target?: { min: number; max: number }): "low" |
 export default function PlanVolumeSummary({
   volume,
   targets,
+  title = "Weekly plan volume",
+  description = "Working sets per muscle across your favorited (starred) routines, vs. a typical weekly target.",
 }: {
   volume: MuscleVolume[];
   targets: Record<string, { min: number; max: number }>;
+  title?: string;
+  description?: string;
 }) {
   const byMuscle = new Map(volume.map((v) => [v.muscle, v.sets]));
   const muscles = Array.from(new Set([...Object.keys(targets), ...byMuscle.keys()]));
@@ -33,10 +37,8 @@ export default function PlanVolumeSummary({
 
   return (
     <div style={{ background: "#14171b", border: "1px solid #23262b", borderRadius: 10, padding: 16, marginBottom: 24 }}>
-      <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Weekly plan volume</h2>
-      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
-        Working sets per muscle across your favorited (starred) routines, vs. a typical weekly target.
-      </p>
+      <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>{title}</h2>
+      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>{description}</p>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {rows.map(({ muscle, sets, target, status }) => (
           <div key={muscle} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>

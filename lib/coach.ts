@@ -7,14 +7,33 @@ import { muscleVolume, startOfWeek, workingSets, workoutsInRange } from "@/lib/w
 import { getVolumeTargets, type VolumeTargets } from "@/lib/currentUser";
 import { createClient } from "@/lib/supabase/server";
 
+const MAX_DRAFT_ROUTINES = 4;
+
 export type ProposedEdit = {
   id: string;
   routineId: string;
   routineTitle: string;
   exerciseIndex: number;
   exerciseTitle: string;
-  action: "add_set" | "remove_set";
-  count: number;
+  action: "add_set" | "remove_set" | "change_weight" | "change_rest_seconds";
+  count?: number;
+  newWeightKg?: number;
+  newRestSeconds?: number;
+  rationale: string;
+  status: "pending" | "applied" | "rejected";
+  // Snapshot of the exercise's state at the moment the review was generated,
+  // computed server-side from the live routine (not trusted from the LLM) so
+  // the compare UI can render a before/after diff without another Hevy fetch.
+  before: { workingSets: number; topWeightKg: number | null; restSeconds: number | null };
+};
+
+export type ProposedTargetEdit = {
+  id: string;
+  muscle: string;
+  currentMin: number;
+  currentMax: number;
+  newMin: number;
+  newMax: number;
   rationale: string;
   status: "pending" | "applied" | "rejected";
 };
@@ -148,19 +167,29 @@ function gatherProgression(workouts: HevyWorkout[], exerciseIds: string[]): Exer
   return result;
 }
 
+const ANTI_HALLUCINATION_PREAMBLE = `Before writing anything, follow these rules strictly:
+- Use ONLY the facts given to you in the data below. Never invent sessions, sets, weights, reps, RPE values, exercises, routines, or dates that are not explicitly present in the data.
+- If the data needed to assess something is missing or insufficient, say so explicitly (e.g. "not enough data yet to assess progressive overload on this lift") rather than filling the gap with a plausible-sounding guess.
+- Do NOT cite specific studies, authors, or statistics unless you are confident they are real and well-established (e.g. it is fine to say "Schoenfeld et al.'s volume-landmark research" as a general reference, but never invent a specific number, year, or finding you are not sure of).
+- Every recommendation must trace back either to a specific number in the provided data or to one of the general training-science principles below — never to generic gym folklore ("muscle confusion", "shocking the muscle", vague soreness talk, etc.).
+- Keep the tone factual and specific to this client's numbers, not generic filler that could apply to anyone.
+
+`;
+
 function buildSystemPrompt(): string {
-  return `You are an evidence-based strength & hypertrophy coach reviewing a client's training week.
+  return `${ANTI_HALLUCINATION_PREAMBLE}You are an evidence-based strength & hypertrophy coach reviewing a client's training week.
 
 Ground every recommendation in established resistance-training science consensus:
-- Progressive overload over time (increasing weight, reps, or sets across sessions for the same exercise).
+- Progressive overload over time (increasing weight, reps, or sets across sessions for the same exercise) — use the per-exercise weight/reps/RPE trend provided to judge whether load should increase, hold, or (rarely) decrease.
 - Weekly volume landmarks per muscle group (roughly 10-20 working sets/week for major muscle groups, 8-15 for smaller ones, based on dose-response volume research such as Schoenfeld et al.'s meta-analyses and volume-landmark frameworks like Israetel's).
 - Training frequency of at least ~2x/week per muscle group for hypertrophy.
-- RPE/RIR-based autoregulation (Helms et al.) to manage fatigue and avoid overreaching.
+- RPE/RIR-based autoregulation (Helms et al.) to manage fatigue and avoid overreaching — an exercise trending toward high RPE at the same weight/reps is a signal to hold or add recovery, not add more volume.
+- Rest-interval science: roughly 2-3 minutes between sets for compound/multi-joint lifts (to maintain load and total volume across sets), roughly 60-90 seconds for single-joint/isolation accessory work, per rest-interval research (e.g. Schoenfeld & Grgic).
 - Recovery and periodic deloads (roughly every 6-8 weeks of accumulating fatigue).
 
 Do NOT invent specific fake study citations, authors, or statistics you are not confident about. Refer to general, well-established consensus rather than fabricated sources. Do not give "bro science" advice (e.g. vague folklore about muscle confusion, feeling sore, etc.) — every claim should be traceable to the principles above.
 
-You will be given: this week's actual performed training, the client's intended weekly plan (their favorited/starred routines), the last 4 weeks of volume history per muscle, and recent per-exercise progression (weight/reps/RPE trend). Also given: the exact structure of the client's favorited routines (with exercise indices) so you can propose concrete set-count adjustments.
+You will be given: this week's actual performed training, the client's intended weekly plan (their favorited/starred routines), the last 4 weeks of volume history per muscle, recent per-exercise progression (weight/reps/RPE trend), the client's current weekly volume-target range per muscle, and the exact structure of the client's favorited routines (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete changes.
 
 Respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) matching this shape:
 {
@@ -171,14 +200,29 @@ Respond with ONLY a single JSON object (no markdown fences, no prose outside the
       "routineTitle": "<exact routine title>",
       "exerciseIndex": <exact integer index from the provided exercise list for that routine>,
       "exerciseTitle": "<exact exercise title at that index>",
-      "action": "add_set" | "remove_set",
-      "count": <integer, how many sets to add or remove>,
-      "rationale": "<one sentence, tied to volume landmarks or overload/recovery principles>"
+      "action": "add_set" | "remove_set" | "change_weight" | "change_rest_seconds",
+      "count": <integer, required for add_set/remove_set: how many sets to add or remove>,
+      "newWeightKg": <number, required for change_weight: the new working-set weight in kg>,
+      "newRestSeconds": <integer, required for change_rest_seconds: the new rest period in seconds>,
+      "rationale": "<one sentence, tied to volume landmarks, overload/recovery, or rest-interval principles>"
+    }
+  ],
+  "proposedTargetEdits": [
+    {
+      "muscle": "<exact muscle key from the provided target list>",
+      "newMin": <integer, new weekly working-set minimum for that muscle>,
+      "newMax": <integer, new weekly working-set maximum for that muscle>,
+      "rationale": "<one sentence, must cite a specific recovery/plateau/overreach reason from the data, never just 'you're not hitting the current target'>"
     }
   ]
 }
 
-Only propose edits when volume is clearly below or above the target range for a muscle, or when an exercise's set count should change based on trend/recovery. If nothing needs to change, return an empty proposedEdits array. Never propose edits for routines or exercise indices not present in the provided list.`;
+Only propose edits when volume is clearly below or above the target range for a muscle, or when an exercise's set count, load, or rest period should change based on trend/recovery data. If nothing needs to change, return an empty array for that field.
+
+Constraints:
+- Touch at most ${MAX_DRAFT_ROUTINES} distinct routines (by routineId) across all of proposedEdits — pick the ones that matter most.
+- Never propose edits for routines or exercise indices not present in the provided list.
+- proposedTargetEdits should be rare — only propose a target-range change when the data shows a genuine, sustained mismatch (e.g. consistently overreaching without recovery, or a plateau suggesting the range itself is wrong), never merely to match how much the client actually did that week.`;
 }
 
 function buildUserPrompt(data: WeeklyData): string {
@@ -226,20 +270,26 @@ function buildUserPrompt(data: WeeklyData): string {
     lines.push(`- ${ex.title} (${ex.muscle}): ${trail || "no recent data"}`);
   }
 
-  lines.push(`\n## Favorited routines structure (for proposing set-count edits)`);
+  lines.push(`\n## Favorited routines structure (for proposing set/weight/rest edits)`);
   for (const r of data.favorites) {
     lines.push(`### Routine "${r.title}" (routineId: ${r.id})`);
     const exercises = [...(r.exercises ?? [])].sort((a, b) => a.index - b.index);
     exercises.forEach((ex: RoutineExercise) => {
-      const workingSets = ex.sets.filter((s) => s.type !== "warmup").length;
-      lines.push(`  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — currently ${workingSets} working sets`);
+      const working = ex.sets.filter((s) => s.type !== "warmup");
+      const topWeight = working.length ? Math.max(...working.map((s) => s.weight_kg ?? 0)) : null;
+      lines.push(
+        `  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
+      );
     });
   }
 
   return lines.join("\n");
 }
 
-function parseReviewJson(text: string): { review: string; proposedEdits: Omit<ProposedEdit, "id" | "status">[] } {
+type RawProposedEdit = Omit<ProposedEdit, "id" | "status">;
+type RawProposedTargetEdit = Omit<ProposedTargetEdit, "id" | "status" | "currentMin" | "currentMax">;
+
+function parseReviewJson(text: string): { review: string; proposedEdits: RawProposedEdit[]; proposedTargetEdits: RawProposedTargetEdit[] } {
   let cleaned = text.trim();
   const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced) cleaned = fenced[1].trim();
@@ -263,14 +313,7 @@ function parseReviewJson(text: string): { review: string; proposedEdits: Omit<Pr
   }
 }
 
-export async function generateWeeklyReview(
-  userId: string,
-  hevyApiKey: string,
-  anthropicApiKey: string
-): Promise<{ review: string; proposedEdits: ProposedEdit[] }> {
-  const data = await gatherWeeklyData(userId, hevyApiKey);
-  const userPrompt = buildUserPrompt(data);
-
+async function callCoachModel(systemPrompt: string, userPrompt: string, anthropicApiKey: string): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -279,9 +322,9 @@ export async function generateWeeklyReview(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-5",
+      model: "claude-haiku-4-5",
       max_tokens: 8192,
-      system: buildSystemPrompt(),
+      system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     }),
   });
@@ -301,24 +344,180 @@ export async function generateWeeklyReview(
     throw new Error("The coach's response was cut off (too long) — try again.");
   }
 
-  const parsed = parseReviewJson(text);
+  return text;
+}
 
-  const favoriteById = new Map(data.favorites.map((r) => [r.id, r]));
-  const proposedEdits: ProposedEdit[] = (parsed.proposedEdits ?? [])
-    .filter((edit) => {
+function buildProposals(
+  parsed: { proposedEdits: RawProposedEdit[]; proposedTargetEdits: RawProposedTargetEdit[] },
+  favorites: Routine[],
+  targets: VolumeTargets
+): { proposedEdits: ProposedEdit[]; proposedTargetEdits: ProposedTargetEdit[] } {
+  const favoriteById = new Map(favorites.map((r) => [r.id, r]));
+  const validatedEdits = (parsed.proposedEdits ?? [])
+    .map((edit) => {
       const routine = favoriteById.get(edit.routineId);
-      if (!routine) return false;
-      const exercises = routine.exercises ?? [];
-      const ex = exercises.find((e) => e.index === edit.exerciseIndex);
-      return !!ex && ex.title === edit.exerciseTitle;
+      const ex = routine?.exercises?.find((e) => e.index === edit.exerciseIndex);
+      return { edit, ex };
     })
+    .filter(({ edit, ex }): boolean => {
+      if (!ex || ex.title !== edit.exerciseTitle) return false;
+      if (edit.action === "add_set" || edit.action === "remove_set") return typeof edit.count === "number";
+      if (edit.action === "change_weight") return typeof edit.newWeightKg === "number";
+      if (edit.action === "change_rest_seconds") return typeof edit.newRestSeconds === "number";
+      return false;
+    })
+    .map(({ edit, ex }) => {
+      const workingSets = ex!.sets.filter((s) => s.type !== "warmup");
+      const before = { workingSets: workingSets.length, topWeightKg: topWeight(workingSets), restSeconds: ex!.rest_seconds };
+      return { ...edit, before };
+    });
+
+  // Server-side backstop for the "at most MAX_DRAFT_ROUTINES" prompt instruction —
+  // keep edits only for the first N distinct routines, in the order they appeared.
+  const allowedRoutineIds = new Set<string>();
+  for (const edit of validatedEdits) {
+    if (allowedRoutineIds.size >= MAX_DRAFT_ROUTINES && !allowedRoutineIds.has(edit.routineId)) continue;
+    allowedRoutineIds.add(edit.routineId);
+  }
+  const proposedEdits: ProposedEdit[] = validatedEdits
+    .filter((edit) => allowedRoutineIds.has(edit.routineId))
+    .map((edit) => ({ ...edit, id: crypto.randomUUID(), status: "pending" as const }));
+
+  const proposedTargetEdits: ProposedTargetEdit[] = (parsed.proposedTargetEdits ?? [])
+    .filter((edit) => targets[edit.muscle] && typeof edit.newMin === "number" && typeof edit.newMax === "number")
     .map((edit) => ({
       ...edit,
+      currentMin: targets[edit.muscle].min,
+      currentMax: targets[edit.muscle].max,
       id: crypto.randomUUID(),
       status: "pending" as const,
     }));
 
-  return { review: parsed.review, proposedEdits };
+  return { proposedEdits, proposedTargetEdits };
+}
+
+export async function generateWeeklyReview(
+  userId: string,
+  hevyApiKey: string,
+  anthropicApiKey: string
+): Promise<{ review: string; proposedEdits: ProposedEdit[]; proposedTargetEdits: ProposedTargetEdit[] }> {
+  const data = await gatherWeeklyData(userId, hevyApiKey);
+  const text = await callCoachModel(buildSystemPrompt(), buildUserPrompt(data), anthropicApiKey);
+  const parsed = parseReviewJson(text);
+  const { proposedEdits, proposedTargetEdits } = buildProposals(parsed, data.favorites, data.targets);
+  return { review: parsed.review, proposedEdits, proposedTargetEdits };
+}
+
+type RoutinePlanData = {
+  favorites: Routine[];
+  planVolume: { muscle: string; sets: number }[];
+  targets: VolumeTargets;
+};
+
+async function gatherRoutinePlanData(userId: string, hevyApiKey: string): Promise<RoutinePlanData> {
+  const supabase = await createClient();
+  const [allRoutines, { data: favoriteRows }, targets] = await Promise.all([
+    fetchAllRoutines(hevyApiKey),
+    supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
+    getVolumeTargets(userId),
+  ]);
+  const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
+  const favorites: Routine[] = allRoutines
+    .filter((r) => favoriteIds.has(r.id))
+    .map((r) => ({ ...r, is_favorite: true }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+
+  return { favorites, planVolume: computePlanVolume(favorites), targets };
+}
+
+function buildRoutinePlanSystemPrompt(): string {
+  return `${ANTI_HALLUCINATION_PREAMBLE}You are an evidence-based strength & hypertrophy coach reviewing the DESIGN of a client's favorited/starred weekly routines — not their actual training performance. You are NOT given any session logs, workout history, or adherence data, so never comment on adherence, consistency, or what the client "actually did" this week — only on whether the program AS WRITTEN is well-designed.
+
+Ground every recommendation in established resistance-training program-design consensus:
+- Weekly volume landmarks per muscle group (roughly 10-20 working sets/week for major muscle groups, 8-15 for smaller ones, based on dose-response volume research such as Schoenfeld et al.'s meta-analyses and volume-landmark frameworks like Israetel's) — evaluate the planned weekly volume per muscle (summed across all favorited routines) against the client's target ranges.
+- Training frequency of at least ~2x/week per muscle group for hypertrophy — check whether the favorited routines, taken together, hit each major muscle group often enough.
+- Set/rest structure: roughly 2-3 minutes rest for compound/multi-joint lifts, roughly 60-90 seconds for single-joint/isolation accessory work (Schoenfeld & Grgic).
+- Balanced exercise selection (e.g. push/pull balance, no single muscle group left with zero direct or indirect volume across the whole plan).
+
+Do NOT invent specific fake study citations, authors, or statistics you are not confident about. Refer to general, well-established consensus rather than fabricated sources. Do not give "bro science" advice.
+
+You will be given: the client's current weekly volume-target range per muscle, the combined planned weekly volume per muscle across all favorited routines, and the exact structure of each favorited routine (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete structural changes.
+
+Respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) matching this shape:
+{
+  "review": "<markdown-formatted routine-design review: volume balance per muscle vs targets, frequency coverage, set/rest structure issues, and concrete recommendations — no comments on adherence or actual performance since none was provided>",
+  "proposedEdits": [
+    {
+      "routineId": "<exact routineId from the provided routine list>",
+      "routineTitle": "<exact routine title>",
+      "exerciseIndex": <exact integer index from the provided exercise list for that routine>,
+      "exerciseTitle": "<exact exercise title at that index>",
+      "action": "add_set" | "remove_set" | "change_weight" | "change_rest_seconds",
+      "count": <integer, required for add_set/remove_set: how many sets to add or remove>,
+      "newWeightKg": <number, required for change_weight: the new working-set weight in kg>,
+      "newRestSeconds": <integer, required for change_rest_seconds: the new rest period in seconds>,
+      "rationale": "<one sentence, tied to volume landmarks, frequency, or rest-interval principles>"
+    }
+  ],
+  "proposedTargetEdits": [
+    {
+      "muscle": "<exact muscle key from the provided target list>",
+      "newMin": <integer, new weekly working-set minimum for that muscle>,
+      "newMax": <integer, new weekly working-set maximum for that muscle>,
+      "rationale": "<one sentence, must cite a specific structural reason from the data, never just 'the plan doesn't match the current target'>"
+    }
+  ]
+}
+
+Only propose edits when planned volume is clearly below or above the target range for a muscle, or when set count, weight, or rest period should change based on program-design principles. If nothing needs to change, return an empty array for that field.
+
+Constraints:
+- Touch at most ${MAX_DRAFT_ROUTINES} distinct routines (by routineId) across all of proposedEdits — pick the ones that matter most.
+- Never propose edits for routines or exercise indices not present in the provided list.
+- proposedTargetEdits should be rare — only propose a target-range change when the plan's structure itself strongly suggests the range is wrong, never merely to match what's currently planned.`;
+}
+
+function buildRoutinePlanUserPrompt(data: RoutinePlanData): string {
+  const lines: string[] = [];
+
+  lines.push(`## Combined planned weekly volume (from favorited/starred routines) per muscle vs. target`);
+  const planByMuscle = new Map(data.planVolume.map((v) => [v.muscle, v.sets]));
+  const allMuscles = Array.from(new Set([...Object.keys(data.targets), ...planByMuscle.keys()]));
+  for (const muscle of allMuscles) {
+    const target = data.targets[muscle];
+    lines.push(`- ${muscle}: ${planByMuscle.get(muscle) ?? 0} sets planned (target ${target ? `${target.min}-${target.max}` : "n/a"})`);
+  }
+
+  lines.push(`\n## Favorited routines structure`);
+  for (const r of data.favorites) {
+    lines.push(`### Routine "${r.title}" (routineId: ${r.id})`);
+    const exercises = [...(r.exercises ?? [])].sort((a, b) => a.index - b.index);
+    exercises.forEach((ex: RoutineExercise) => {
+      const working = ex.sets.filter((s) => s.type !== "warmup");
+      const topWeight = working.length ? Math.max(...working.map((s) => s.weight_kg ?? 0)) : null;
+      lines.push(
+        `  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
+      );
+    });
+  }
+
+  return lines.join("\n");
+}
+
+export async function generateRoutinePlanReview(
+  userId: string,
+  hevyApiKey: string,
+  anthropicApiKey: string
+): Promise<{ review: string; proposedEdits: ProposedEdit[]; proposedTargetEdits: ProposedTargetEdit[] }> {
+  const data = await gatherRoutinePlanData(userId, hevyApiKey);
+  const text = await callCoachModel(buildRoutinePlanSystemPrompt(), buildRoutinePlanUserPrompt(data), anthropicApiKey);
+  const parsed = parseReviewJson(text);
+  const { proposedEdits, proposedTargetEdits } = buildProposals(parsed, data.favorites, data.targets);
+  return { review: parsed.review, proposedEdits, proposedTargetEdits };
+}
+
+function emptySet(): HevySetUpdate {
+  return { type: "normal", weight_kg: null, reps: null, distance_meters: null, duration_seconds: null, custom_metric: null };
 }
 
 function cleanSet(s: RoutineSet): HevySetUpdate {
@@ -332,45 +531,92 @@ function cleanSet(s: RoutineSet): HevySetUpdate {
   };
 }
 
+function topWeight(sets: HevySetUpdate[]): number | null {
+  const weighted = sets.filter((s) => s.weight_kg != null);
+  return weighted.length ? Math.max(...weighted.map((s) => Number(s.weight_kg))) : null;
+}
+
+export type ExerciseDiff = {
+  exerciseIndex: number;
+  exerciseTitle: string;
+  before: { workingSets: number; topWeightKg: number | null; restSeconds: number | null };
+  after: { workingSets: number; topWeightKg: number | null; restSeconds: number | null };
+  rationales: string[];
+};
+
+export type RoutineDraft = {
+  routineId: string;
+  routineTitle: string;
+  exerciseDiffs: ExerciseDiff[];
+  payload: { title: string; notes: string | null; exercises: HevyExerciseUpdate[] };
+};
+
 // Builds the full replacement payload Hevy's PUT /v1/routines/{id} expects,
-// applying a single set-count edit to one exercise and passing every other
-// exercise through unchanged (the endpoint replaces the whole routine body).
-export function applyEditToRoutine(
-  routine: Routine,
-  edit: ProposedEdit
-): { title: string; notes: string | null; exercises: HevyExerciseUpdate[] } {
+// applying every pending edit for this one routine (across possibly several
+// exercises, and possibly several edits on the same exercise) on top of the
+// live-fetched routine, passing unchanged exercises through as-is (the
+// endpoint replaces the whole routine body). Also returns a per-exercise
+// before/after view for the draft-compare UI.
+export function buildRoutineDraft(routine: Routine, edits: ProposedEdit[]): RoutineDraft {
   const exercises = [...(routine.exercises ?? [])].sort((a, b) => a.index - b.index);
-  const target = exercises.find((e) => e.index === edit.exerciseIndex);
-  if (!target || target.title !== edit.exerciseTitle) {
-    throw new Error("This routine changed since the review was generated — regenerate a new review before applying.");
+  const editsByExercise = new Map<number, ProposedEdit[]>();
+  for (const edit of edits) {
+    if (!editsByExercise.has(edit.exerciseIndex)) editsByExercise.set(edit.exerciseIndex, []);
+    editsByExercise.get(edit.exerciseIndex)!.push(edit);
   }
 
+  const exerciseDiffs: ExerciseDiff[] = [];
+
   const updatedExercises: HevyExerciseUpdate[] = exercises.map((ex: RoutineExercise) => {
+    const exerciseEdits = editsByExercise.get(ex.index);
     let sets = ex.sets.map(cleanSet);
-    if (ex.index === edit.exerciseIndex) {
-      if (edit.action === "add_set") {
-        const template = sets[sets.length - 1] ?? {
-          type: "normal",
-          weight_kg: null,
-          reps: null,
-          distance_meters: null,
-          duration_seconds: null,
-          custom_metric: null,
-        };
-        for (let i = 0; i < edit.count; i++) sets.push({ ...template });
-      } else {
-        const removeCount = Math.min(edit.count, Math.max(0, sets.length - 1));
-        sets = sets.slice(0, sets.length - removeCount);
+    let restSeconds = ex.rest_seconds;
+
+    if (exerciseEdits && exerciseEdits.length > 0) {
+      if (exerciseEdits.some((e) => e.exerciseTitle !== ex.title)) {
+        throw new Error("This routine changed since the review was generated — regenerate a new review before applying.");
       }
+
+      const beforeWorking = sets.filter((s) => s.type !== "warmup");
+      const before = { workingSets: beforeWorking.length, topWeightKg: topWeight(beforeWorking), restSeconds };
+
+      for (const edit of exerciseEdits) {
+        if (edit.action === "add_set") {
+          const template = sets[sets.length - 1] ?? emptySet();
+          for (let i = 0; i < (edit.count ?? 0); i++) sets.push({ ...template });
+        } else if (edit.action === "remove_set") {
+          const removeCount = Math.min(edit.count ?? 0, Math.max(0, sets.length - 1));
+          sets = sets.slice(0, sets.length - removeCount);
+        } else if (edit.action === "change_weight" && edit.newWeightKg != null) {
+          sets = sets.map((s) => (s.type === "warmup" ? s : { ...s, weight_kg: edit.newWeightKg! }));
+        } else if (edit.action === "change_rest_seconds" && edit.newRestSeconds != null) {
+          restSeconds = edit.newRestSeconds;
+        }
+      }
+
+      const afterWorking = sets.filter((s) => s.type !== "warmup");
+      exerciseDiffs.push({
+        exerciseIndex: ex.index,
+        exerciseTitle: ex.title,
+        before,
+        after: { workingSets: afterWorking.length, topWeightKg: topWeight(afterWorking), restSeconds },
+        rationales: exerciseEdits.map((e) => e.rationale),
+      });
     }
+
     return {
       exercise_template_id: ex.exercise_template_id,
       superset_id: ex.superset_id,
-      rest_seconds: ex.rest_seconds,
+      rest_seconds: restSeconds,
       notes: ex.notes,
       sets,
     };
   });
 
-  return { title: routine.title, notes: routine.notes ?? null, exercises: updatedExercises };
+  return {
+    routineId: routine.id,
+    routineTitle: routine.title,
+    exerciseDiffs,
+    payload: { title: routine.title, notes: routine.notes ?? null, exercises: updatedExercises },
+  };
 }
