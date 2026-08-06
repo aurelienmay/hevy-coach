@@ -6,7 +6,8 @@ excluded) — which is the piece Hevy's own stats don't give you.
 
 ## What's here
 
-- `lib/hevy.ts` — Hevy API client (fetches workouts + routines live, updates routines); takes each caller's Hevy API key explicitly
+- `lib/hevy.ts` — Hevy API client (fetches workouts + routines live, updates routines); takes each caller's Hevy API key explicitly; throws a typed `HevyApiError` (carries HTTP status) on failed requests
+- `components/HevyError.tsx`, `app/error.tsx` — shared display for Hevy fetch failures (bad key vs. rate-limited vs. transient) instead of the framework's default error screen
 - `lib/workoutStats.ts` — shared helpers for deriving weekly/muscle-volume stats from live workout data
 - `lib/muscleMap.ts` — exercise → muscle group mapping (extend it as you add new exercises)
 - `lib/currentUser.ts` — per-request helpers: the signed-in user, their saved Hevy API key (redirects to `/settings` if missing), their volume targets
@@ -19,7 +20,7 @@ excluded) — which is the piece Hevy's own stats don't give you.
 - `app/coach/page.tsx` — AI weekly coach: on-demand review of the week's training vs. evidence-based volume/progression targets, with proposed set-count edits you can accept (writes back to Hevy) or reject
 - `lib/coach.ts` — gathers weekly training data live from Hevy and calls the Anthropic API (with the signed-in user's own key) to generate the review
 - `schema.sql` — Postgres schema: `user_settings` (Hevy API key + volume targets), `favorite_routines`, `coach_reviews` — all scoped per-user via Row Level Security
-- `middleware.ts` — refreshes the Supabase session and redirects signed-out requests to `/login`
+- `middleware.ts` — refreshes the Supabase session, redirects signed-out requests to `/login`, and forwards the verified user id via an `x-user-id` header so page loads skip a second round-trip to the Supabase Auth server
 
 ## Setup
 
@@ -59,3 +60,5 @@ the AI Coach page. Both keys are per-user, not app-wide — everyone who signs u
 - **Extending `muscleMap.ts`:** if you add a new exercise to a Hevy routine that isn't in the map, it'll fall back to `"other"` and get excluded from the muscle charts — add it to the map when that happens.
 - **AI Coach scope:** proposed edits are currently limited to adding/removing sets on exercises already in your favorited routines (cloning the last set's weight/reps/type). It won't add brand-new exercises to a routine — that would require mapping Hevy's exercise-template catalog, which isn't wired up yet.
 - **Coach cost:** each "Generate weekly review" click is one Anthropic API call, billed to *that user's own* Anthropic key — not a shared app-wide key. It's also a manual button, not a scheduled job, so it only costs when a user clicks it. This means open signup can't run up a bill on your account: the AI Coach page simply won't work for a user until they add their own key on `/settings`.
+- **This repo is public.** `.env.local`/`.env` are gitignored so real Supabase/Hevy/Anthropic credentials never get committed — only `.env.example` (empty placeholders) is tracked. Don't add secrets to tracked files, and keep the Supabase project's own access controls in mind since anyone can read the source and RLS policies here.
+- **Node 20 pin:** `@supabase/supabase-js`/`@supabase/ssr` are exact-pinned (`0.12.0`/`2.109.0`, not `^range`) because newer supabase-js requires Node ≥22. Bump the pin (and the dev/deploy Node runtime) together if you upgrade.
