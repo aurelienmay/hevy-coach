@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import RoutineCard, { type Routine } from "@/components/RoutineCard";
 import OtherRoutines from "@/components/OtherRoutines";
 import PlanVolumeSummary from "@/components/PlanVolumeSummary";
+import RoutineComparison from "@/components/RoutineComparison";
 import HevyError from "@/components/HevyError";
 import { computePlanVolume } from "@/lib/planVolume";
 
@@ -53,27 +54,41 @@ export default async function RoutinesPage() {
         Star a routine to mark it part of your current weekly plan.
       </p>
 
-      <h2 style={{ fontSize: 18, marginBottom: 12 }}>Current plan</h2>
       {favorites.length === 0 ? (
-        <p style={{ color: "#888", fontSize: 13, marginBottom: 24 }}>
-          No favorites yet — show other routines below and star one to add it to your plan.
-        </p>
-      ) : (
         <>
-          <PlanVolumeSummary volume={planVolume} targets={targets} />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              gap: 16,
-              marginBottom: 32,
-            }}
-          >
-            {favorites.map((r) => (
-              <RoutineCard key={r.id} routine={r} />
-            ))}
-          </div>
+          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Current plan</h2>
+          <p style={{ color: "#888", fontSize: 13, marginBottom: 24 }}>
+            No favorites yet — show other routines below and star one to add it to your plan.
+          </p>
         </>
+      ) : (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
+            gap: 32,
+            marginBottom: 32,
+            alignItems: "start",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: 18, marginBottom: 12 }}>Current plan</h2>
+            <PlanVolumeSummary volume={planVolume} targets={targets} />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {favorites.map((r) => (
+                <RoutineCard key={r.id} routine={r} />
+              ))}
+            </div>
+          </div>
+
+          <RoutineComparison favorites={favorites} targets={targets} />
+        </div>
       )}
 
       <h2 style={{ fontSize: 18, marginBottom: 12 }}>Other routines</h2>
