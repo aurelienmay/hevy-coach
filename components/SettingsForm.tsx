@@ -15,6 +15,12 @@ import {
   type MusclePriority,
   type MusclePriorities,
 } from "@/lib/trainingProfile";
+import {
+  WEEKDAY_ORDER,
+  WEEKDAY_LABELS,
+  type NormalTrainingWeek,
+  type ScheduleException,
+} from "@/lib/schedule";
 
 const MUSCLES = [...ALL_MUSCLES].sort();
 
@@ -28,20 +34,38 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
 };
 
+const TABS = [
+  { key: "keys", label: "API Keys" },
+  { key: "profile", label: "Training Profile" },
+  { key: "schedule", label: "Schedule" },
+  { key: "volume", label: "Volume Targets" },
+] as const;
+
+type TabKey = (typeof TABS)[number]["key"];
+
 export default function SettingsForm({
   initialApiKey,
   initialAnthropicApiKey,
   initialOverrides,
   initialProfile,
   initialPriorities,
+  initialNormalTrainingWeek,
+  initialScheduleExceptions,
+  needsKey,
+  needsAnthropicKey,
 }: {
   initialApiKey: string;
   initialAnthropicApiKey: string;
   initialOverrides: VolumeTargets;
   initialProfile: TrainingProfile;
   initialPriorities: MusclePriorities;
+  initialNormalTrainingWeek: NormalTrainingWeek;
+  initialScheduleExceptions: ScheduleException[];
+  needsKey?: boolean;
+  needsAnthropicKey?: boolean;
 }) {
   const router = useRouter();
+  const [tab, setTab] = useState<TabKey>(needsKey || needsAnthropicKey ? "keys" : "profile");
   const [apiKey, setApiKey] = useState(initialApiKey);
   const [anthropicApiKey, setAnthropicApiKey] = useState(initialAnthropicApiKey);
   // Only muscles the user has explicitly chosen to pin by hand — everything
@@ -50,6 +74,11 @@ export default function SettingsForm({
   const [overrides, setOverrides] = useState<VolumeTargets>(initialOverrides);
   const [profile, setProfile] = useState<TrainingProfile>(initialProfile);
   const [priorities, setPriorities] = useState<MusclePriorities>(initialPriorities);
+  const [normalTrainingWeek, setNormalTrainingWeek] = useState<NormalTrainingWeek>(initialNormalTrainingWeek);
+  const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>(initialScheduleExceptions);
+  const [newExceptionStart, setNewExceptionStart] = useState("");
+  const [newExceptionEnd, setNewExceptionEnd] = useState("");
+  const [newExceptionNote, setNewExceptionNote] = useState("");
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +125,30 @@ export default function SettingsForm({
     setSaved(false);
   }
 
+  function toggleWeekday(weekday: number) {
+    setNormalTrainingWeek((prev) =>
+      prev.includes(weekday) ? prev.filter((d) => d !== weekday) : [...prev, weekday]
+    );
+    setSaved(false);
+  }
+
+  function addException() {
+    if (!newExceptionStart || !newExceptionEnd || newExceptionEnd < newExceptionStart) return;
+    setScheduleExceptions((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), startDate: newExceptionStart, endDate: newExceptionEnd, note: newExceptionNote.trim() },
+    ]);
+    setNewExceptionStart("");
+    setNewExceptionEnd("");
+    setNewExceptionNote("");
+    setSaved(false);
+  }
+
+  function removeException(id: string) {
+    setScheduleExceptions((prev) => prev.filter((e) => e.id !== id));
+    setSaved(false);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -111,6 +164,8 @@ export default function SettingsForm({
         volume_targets: overrides,
         training_profile: profile,
         muscle_priorities: priorities,
+        normal_training_week: normalTrainingWeek,
+        schedule_exceptions: scheduleExceptions,
       }),
     });
 
@@ -127,6 +182,31 @@ export default function SettingsForm({
 
   return (
     <form onSubmit={onSubmit} style={{ maxWidth: 480 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" }}>
+        {TABS.map(({ key, label }) => {
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 6,
+                border: active ? "1px solid #4f8ef7" : "1px solid #333",
+                background: active ? "#1c3157" : "#14171b",
+                color: active ? "#cddcf7" : "#888",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ display: tab === "keys" ? "block" : "none" }}>
       <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
         Hevy API key
       </label>
@@ -156,7 +236,9 @@ export default function SettingsForm({
         console.anthropic.com → API Keys. Only needed for the AI Coach page, and it's your
         own key — usage is billed to your Anthropic account, not shared with other users.
       </p>
+      </div>
 
+      <div style={{ display: tab === "profile" ? "block" : "none" }}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Training profile</h2>
       <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
         Tells the AI Coach what you're actually training for, so its advice and
@@ -224,7 +306,118 @@ export default function SettingsForm({
         rows={3}
         style={{ ...inputStyle, marginBottom: 24, resize: "vertical", fontFamily: "inherit" }}
       />
+      </div>
 
+      <div style={{ display: tab === "schedule" ? "block" : "none" }}>
+      <h2 style={{ fontSize: 16, marginBottom: 4 }}>Weekly schedule</h2>
+      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+        Your normal training week, plus any upcoming date ranges you won&apos;t be able to train
+        (holidays, travel). The AI Coach uses this to adapt a specific week&apos;s plan around the
+        days you actually have available.
+      </p>
+
+      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+        Normal training days
+      </label>
+      <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
+        {WEEKDAY_ORDER.map((weekday) => {
+          const active = normalTrainingWeek.includes(weekday);
+          return (
+            <button
+              key={weekday}
+              type="button"
+              onClick={() => toggleWeekday(weekday)}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 6,
+                border: active ? "1px solid #4f8ef7" : "1px solid #333",
+                background: active ? "#1c3157" : "#14171b",
+                color: active ? "#cddcf7" : "#888",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              {WEEKDAY_LABELS[weekday].slice(0, 3)}
+            </button>
+          );
+        })}
+      </div>
+
+      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+        Upcoming exceptions <span style={{ color: "#666" }}>(holidays, travel, etc.)</span>
+      </label>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        {scheduleExceptions.length === 0 && (
+          <p style={{ color: "#666", fontSize: 12, margin: 0 }}>None set.</p>
+        )}
+        {scheduleExceptions.map((exception) => (
+          <div
+            key={exception.id}
+            style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
+          >
+            <span style={{ color: "#ccc" }}>
+              {exception.startDate} → {exception.endDate}
+            </span>
+            {exception.note && <span style={{ color: "#888" }}>({exception.note})</span>}
+            <button
+              type="button"
+              onClick={() => removeException(exception.id)}
+              style={{
+                background: "none",
+                border: "1px solid #333",
+                borderRadius: 6,
+                padding: "2px 8px",
+                color: "#888",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 24, flexWrap: "wrap" }}>
+        <input
+          type="date"
+          value={newExceptionStart}
+          onChange={(e) => setNewExceptionStart(e.target.value)}
+          style={{ ...inputStyle, width: 150 }}
+        />
+        <span style={{ color: "#666" }}>to</span>
+        <input
+          type="date"
+          value={newExceptionEnd}
+          onChange={(e) => setNewExceptionEnd(e.target.value)}
+          style={{ ...inputStyle, width: 150 }}
+        />
+        <input
+          type="text"
+          placeholder="Note (e.g. Holiday)"
+          value={newExceptionNote}
+          onChange={(e) => setNewExceptionNote(e.target.value)}
+          style={{ ...inputStyle, width: 160 }}
+        />
+        <button
+          type="button"
+          onClick={addException}
+          disabled={!newExceptionStart || !newExceptionEnd}
+          style={{
+            background: "#2a2d33",
+            border: "1px solid #3a3d44",
+            borderRadius: 6,
+            padding: "8px 12px",
+            color: "#e2e2e2",
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          Add
+        </button>
+      </div>
+      </div>
+
+      <div style={{ display: tab === "volume" ? "block" : "none" }}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Weekly volume targets</h2>
       <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
         Working sets per muscle group, per week. Ranges are computed from published
@@ -319,6 +512,7 @@ export default function SettingsForm({
             </div>
           );
         })}
+      </div>
       </div>
 
       {error && <p style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</p>}

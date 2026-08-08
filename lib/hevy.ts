@@ -163,6 +163,24 @@ export async function updateRoutine(
   return data.routine ?? data;
 }
 
+// Creates a brand-new routine. Same body shape as updateRoutine, but POSTs
+// without an id since Hevy assigns one.
+export async function createRoutine(
+  apiKey: string,
+  payload: { title: string; notes: string | null; exercises: HevyExerciseUpdate[] }
+): Promise<HevyRoutine> {
+  const res = await fetch(`${API_BASE}/routines`, {
+    method: "POST",
+    headers: headers(apiKey),
+    body: JSON.stringify({ routine: payload }),
+  });
+  if (!res.ok) {
+    throw new HevyApiError(res.status, await res.text());
+  }
+  const data = await res.json();
+  return data.routine ?? data;
+}
+
 export async function fetchRoutine(apiKey: string, routineId: string): Promise<HevyRoutine> {
   const res = await fetch(`${API_BASE}/routines/${routineId}`, {
     headers: headers(apiKey),

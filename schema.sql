@@ -16,6 +16,8 @@ create table user_settings (
   volume_targets jsonb,        -- null = use app defaults; else {muscle: {min, max}} overrides
   training_profile jsonb,      -- null = defaults; else {goal, experienceLevel, daysPerWeek, sessionMinutes, notes}
   muscle_priorities jsonb,     -- null = all "normal"; else {muscle: "maintain" | "normal" | "focus" | "ignore"}
+  normal_training_week jsonb,  -- null = defaults to Mon-Sat; else array of weekday indices (0=Sun..6=Sat) normally trained
+  schedule_exceptions jsonb,   -- null = none; else array of {id, startDate, endDate, note} one-off unavailable date ranges
   updated_at timestamptz not null default now()
 );
 
@@ -23,6 +25,12 @@ create table user_settings (
 -- script fresh (which would drop your existing rows), run this instead:
 --   alter table user_settings add column if not exists training_profile jsonb;
 --   alter table user_settings add column if not exists muscle_priorities jsonb;
+--   alter table user_settings add column if not exists normal_training_week jsonb;
+--   alter table user_settings add column if not exists schedule_exceptions jsonb;
+--   alter table coach_reviews add column if not exists week_plan jsonb not null default '[]';
+--   alter table coach_reviews drop constraint if exists coach_reviews_review_type_check;
+--   alter table coach_reviews add constraint coach_reviews_review_type_check
+--     check (review_type in ('performance', 'plan', 'week_plan'));
 
 create table favorite_routines (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -35,10 +43,11 @@ create table coach_reviews (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   week_start timestamptz not null,
-  review_type text not null default 'performance' check (review_type in ('performance', 'plan')), -- 'performance' = actual-week review, 'plan' = favorited-routines-only design review
-  review text not null,           -- markdown analysis + recommendations
+  review_type text not null default 'performance' check (review_type in ('performance', 'plan', 'week_plan')), -- 'performance' = actual-week review, 'plan' = favorited-routines-only design review, 'week_plan' = schedule-adapted upcoming-week plan
+  review text not null,           -- markdown analysis + recommendations (or plan summary, for 'week_plan')
   proposed_edits jsonb not null,  -- array of {id, routineId, routineTitle, exerciseIndex, exerciseTitle, action, count, newWeightKg, newRestSeconds, rationale, status}
   proposed_target_edits jsonb not null default '[]', -- array of {id, muscle, currentMin, currentMax, newMin, newMax, rationale, status}
+  week_plan jsonb not null default '[]', -- 'week_plan' rows only: array of {date, weekday, status, sessionTitle, exercises, rationale, hevyRoutineId}
   created_at timestamptz not null default now()
 );
 

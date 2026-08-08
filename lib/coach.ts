@@ -4,7 +4,14 @@ import { computePlanVolume } from "@/lib/planVolume";
 import type { Routine, RoutineExercise, RoutineSet } from "@/components/RoutineCard";
 import { fetchAllRoutines, fetchAllWorkouts, type HevyExerciseUpdate, type HevySetUpdate, type HevyWorkout } from "@/lib/hevy";
 import { muscleVolume, startOfWeek, workingSets, workoutsInRange } from "@/lib/workoutStats";
-import { getVolumeTargets, getTrainingProfile, getMusclePriorities, type VolumeTargets } from "@/lib/currentUser";
+import {
+  getVolumeTargets,
+  getTrainingProfile,
+  getMusclePriorities,
+  getNormalTrainingWeek,
+  getScheduleExceptions,
+  type VolumeTargets,
+} from "@/lib/currentUser";
 import {
   GOAL_LABELS,
   EXPERIENCE_LABELS,
@@ -23,6 +30,7 @@ import {
   UNESTABLISHED_MUSCLES,
 } from "@/lib/trainingReference";
 import { createClient } from "@/lib/supabase/server";
+import { resolveWeekAvailability, WEEKDAY_LABELS, type DayAvailability } from "@/lib/schedule";
 
 const MAX_DRAFT_ROUTINES = 4;
 
@@ -356,7 +364,9 @@ function buildUserPrompt(data: WeeklyData): string {
 type RawProposedEdit = Omit<ProposedEdit, "id" | "status">;
 type RawProposedTargetEdit = Omit<ProposedTargetEdit, "id" | "status" | "currentMin" | "currentMax">;
 
-function parseReviewJson(text: string): { review: string; proposedEdits: RawProposedEdit[]; proposedTargetEdits: RawProposedTargetEdit[] } {
+// Extracts and parses the outermost JSON object from a model response,
+// tolerating markdown code fences or stray prose around the JSON.
+function extractJsonObject(text: string): unknown {
   let cleaned = text.trim();
   const fenced = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced) cleaned = fenced[1].trim();
@@ -368,16 +378,24 @@ function parseReviewJson(text: string): { review: string; proposedEdits: RawProp
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
     if (start === -1 || end === -1 || end <= start) {
-      console.error("Coach review response was not parseable JSON. Raw text:", text);
+      console.error("Coach response was not parseable JSON. Raw text:", text);
       throw new Error("The coach's response wasn't valid JSON — try generating again.");
     }
     try {
       return JSON.parse(cleaned.slice(start, end + 1));
     } catch {
-      console.error("Coach review response was not parseable JSON. Raw text:", text);
+      console.error("Coach response was not parseable JSON. Raw text:", text);
       throw new Error("The coach's response wasn't valid JSON — try generating again.");
     }
   }
+}
+
+function parseReviewJson(text: string): { review: string; proposedEdits: RawProposedEdit[]; proposedTargetEdits: RawProposedTargetEdit[] } {
+  return extractJsonObject(text) as {
+    review: string;
+    proposedEdits: RawProposedEdit[];
+    proposedTargetEdits: RawProposedTargetEdit[];
+  };
 }
 
 async function callCoachModel(systemPrompt: string, userPrompt: string, anthropicApiKey: string): Promise<string> {
@@ -591,6 +609,280 @@ export async function generateRoutinePlanReview(
   const parsed = parseReviewJson(text);
   const { proposedEdits, proposedTargetEdits } = buildProposals(parsed, data.favorites, data.targets);
   return { review: parsed.review, proposedEdits, proposedTargetEdits };
+}
+
+// ---------------------------------------------------------------------------
+// Adapted week plan: designs ONE specific upcoming week's training around
+// whichever days the client says they can actually train that week (one-off
+// exceptions like a holiday, layered on their standing normal-training-week
+// pattern), by recombining exercises pulled from across ALL of their
+// favorited routines. Unlike the review modes above, this mode's output can
+// be pushed to Hevy as brand-new routines (see buildCreateRoutinePayload).
+// ---------------------------------------------------------------------------
+
+export type PlannedExercise = {
+  exerciseTemplateId: string;
+  exerciseTitle: string;
+  muscle: string;
+  workingSets: number;
+  weightKg: number | null;
+  reps: number | null;
+  restSeconds: number | null;
+  rationale: string;
+};
+
+export type PlannedDay = {
+  date: string;
+  weekday: string;
+  status: "train" | "rest";
+  sessionTitle: string | null;
+  exercises: PlannedExercise[];
+  rationale: string;
+  hevyRoutineId: string | null;
+};
+
+type ExercisePoolEntry = {
+  exerciseTemplateId: string;
+  title: string;
+  muscle: string;
+  workingSets: number;
+  weightKg: number | null;
+  reps: number | null;
+  restSeconds: number | null;
+  sourceRoutineTitle: string;
+};
+
+type WeekPlanData = {
+  weekStart: string;
+  availability: DayAvailability[];
+  pool: ExercisePoolEntry[];
+  targets: VolumeTargets;
+  profile: TrainingProfile;
+  musclePriorities: MusclePriorities;
+};
+
+async function gatherWeekPlanData(userId: string, hevyApiKey: string, weekStart: Date): Promise<WeekPlanData> {
+  const supabase = await createClient();
+  const [allRoutines, { data: favoriteRows }, targets, profile, musclePriorities, normalWeek, exceptions] = await Promise.all([
+    fetchAllRoutines(hevyApiKey),
+    supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
+    getVolumeTargets(userId),
+    getTrainingProfile(userId),
+    getMusclePriorities(userId),
+    getNormalTrainingWeek(userId),
+    getScheduleExceptions(userId),
+  ]);
+  const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
+  const favorites: Routine[] = allRoutines
+    .filter((r) => favoriteIds.has(r.id))
+    .map((r) => ({ ...r, is_favorite: true }));
+
+  const availability = resolveWeekAvailability(weekStart, normalWeek, exceptions);
+
+  // Pool every exercise across ALL favorited routines (not just one), deduped
+  // by exercise_template_id, so the model can recombine muscle groups that
+  // normally live in separate routines (e.g. merge Push + Pull into one
+  // compressed "Upper" day) — but can never invent an exercise the client
+  // doesn't already use somewhere in their own program.
+  const pool = new Map<string, ExercisePoolEntry>();
+  for (const r of favorites) {
+    for (const ex of r.exercises ?? []) {
+      if (pool.has(ex.exercise_template_id)) continue;
+      const working = ex.sets.filter((s) => s.type !== "warmup");
+      const topSet = working.reduce<RoutineSet | null>((top, s) => {
+        if (s.weight_kg == null) return top;
+        if (!top || (top.weight_kg ?? 0) < s.weight_kg) return s;
+        return top;
+      }, null);
+      pool.set(ex.exercise_template_id, {
+        exerciseTemplateId: ex.exercise_template_id,
+        title: ex.title,
+        muscle: muscleFor(ex.title),
+        workingSets: working.length,
+        weightKg: topSet?.weight_kg ?? null,
+        reps: topSet?.reps ?? working[0]?.reps ?? null,
+        restSeconds: ex.rest_seconds,
+        sourceRoutineTitle: r.title,
+      });
+    }
+  }
+
+  return {
+    weekStart: availability[0].date,
+    availability,
+    pool: Array.from(pool.values()),
+    targets,
+    profile,
+    musclePriorities,
+  };
+}
+
+const WEEK_PLAN_PRINCIPLE = `- Treat a schedule-compressed week (fewer training days than normal) like a planned mini-deload, not a failure to hit normal volume: it's fine and expected for weekly volume to dip toward each muscle's MV (maintenance volume) rather than its usual MEV-MAV training range for one week. Never let a muscle drop to zero coverage if an available day could plausibly cover it, and when cutting volume to fit fewer sessions, cut isolation/accessory work before compound lifts, and prioritize frequency (touching each major muscle at least once) over hitting a normal total set count. Respect the client's per-muscle priorities exactly as elsewhere: never add volume to a "maintain" muscle, prioritize "focus" muscles when a day has spare capacity, and give "ignore" muscles no coverage at all. Pack each day's exercises to plausibly fit within the client's stated session time budget — prefer fewer, higher-yield compound exercises over cramming in every accessory when a day is tight.`;
+
+function buildWeekPlanSystemPrompt(): string {
+  return `${ANTI_HALLUCINATION_PREAMBLE}You are an evidence-based strength & hypertrophy coach designing ONE specific upcoming training week for a client whose normal schedule is temporarily disrupted (travel, a holiday, or a standing day-of-week constraint) — you are building a compressed/adapted version of their usual split to fit only the days they say they can actually train that week.
+
+Ground your day-by-day design in the same principles this app's other coaching uses:
+${VOLUME_LANDMARKS_PRINCIPLE}
+- Training frequency of at least ~2x/week per muscle group for hypertrophy where the available days allow it, but accept lower frequency over a short/compressed week rather than skipping muscles entirely.
+${WEEK_PLAN_PRINCIPLE}
+${PERSONALIZATION_PRINCIPLE}
+
+You will be given: the client's profile, this specific week's day-by-day availability (with a reason for each unavailable day), the client's current weekly volume-target range per muscle, and a pool of exercises drawn from ALL of the client's favorited routines (the building blocks of their normal split) — each with its muscle, usual working-set count, and source routine. You may ONLY select exercises from this pool; you are deciding which of the client's own exercises go on which available day, never inventing new ones.
+
+Respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) matching this shape:
+{
+  "summary": "<markdown overview: how the week is being compressed/adapted and why, and whether any muscle will be under-target this week and if that's a concern>",
+  "days": [
+    {
+      "date": "<YYYY-MM-DD, exact date from the provided availability list>",
+      "status": "train" | "rest",
+      "sessionTitle": "<short session name e.g. 'Upper Body', required if status is 'train'>",
+      "exercises": [
+        {
+          "exerciseTemplateId": "<exact id from the provided exercise pool>",
+          "exerciseTitle": "<exact title from the provided exercise pool for that id>",
+          "workingSets": <integer, how many working sets of this exercise on this day>,
+          "rationale": "<one short sentence>"
+        }
+      ],
+      "rationale": "<one sentence: why this day is a rest day, or why this session was built this way>"
+    }
+  ]
+}
+
+Constraints:
+- Only mark a day "train" if it's listed as available; every unavailable date must be "rest" with the given reason reflected in its rationale.
+- Never invent an exerciseTemplateId or exerciseTitle not present in the provided pool, and never pair a title with the wrong id.
+- Do not propose weight or reps — those are carried over automatically from the client's existing data for each exercise, you only decide which exercises and how many sets.
+- Cover every available date from the provided list with a "train" day unless there's a clear recovery reason to rest instead, which you must state in that day's rationale.`;
+}
+
+function buildWeekPlanUserPrompt(data: WeekPlanData): string {
+  const lines: string[] = [];
+
+  lines.push(buildClientProfileSection(data.profile, data.musclePriorities));
+
+  lines.push(`\n## This week's day-by-day availability (week of ${data.weekStart})`);
+  for (const day of data.availability) {
+    lines.push(
+      `- ${day.date} (${WEEKDAY_LABELS[day.weekday]}): ${day.available ? "AVAILABLE to train" : `unavailable — ${day.reason}`}`
+    );
+  }
+
+  lines.push(`\n## Current weekly volume target per muscle (a normal week)`);
+  for (const [muscle, target] of Object.entries(data.targets)) {
+    lines.push(`- ${muscle}: target ${target.min}-${target.max} sets/week`);
+  }
+
+  lines.push(`\n## Exercise pool (from all favorited routines — pick only from these)`);
+  for (const ex of data.pool) {
+    lines.push(
+      `- id: ${ex.exerciseTemplateId} | "${ex.title}" (${ex.muscle}) — usually ${ex.workingSets} working sets, from "${ex.sourceRoutineTitle}"`
+    );
+  }
+
+  return lines.join("\n");
+}
+
+type RawPlannedDay = {
+  date: string;
+  status: "train" | "rest";
+  sessionTitle?: string | null;
+  exercises?: { exerciseTemplateId: string; exerciseTitle: string; workingSets: number; rationale: string }[];
+  rationale: string;
+};
+
+function parseWeekPlanJson(text: string): { summary: string; days: RawPlannedDay[] } {
+  return extractJsonObject(text) as { summary: string; days: RawPlannedDay[] };
+}
+
+// Builds the final PlannedDay[] from the provided availability (the source
+// of truth for which 7 dates exist and whether each is available), not from
+// whatever dates the model happened to return — so a missing or malformed
+// day from the model degrades to a safe "rest" rather than silently
+// disappearing. Every exercise reference is validated against the known
+// exercise pool before its (deterministic, non-LLM-supplied) weight/reps/
+// rest are attached, mirroring buildProposals' anti-hallucination check.
+function buildPlannedDays(parsed: { days: RawPlannedDay[] }, pool: ExercisePoolEntry[], availability: DayAvailability[]): PlannedDay[] {
+  const poolById = new Map(pool.map((e) => [e.exerciseTemplateId, e]));
+  const byDate = new Map((parsed.days ?? []).map((d) => [d.date, d]));
+
+  return availability.map((avail) => {
+    const raw = byDate.get(avail.date);
+    const status: "train" | "rest" = avail.available && raw?.status === "train" ? "train" : "rest";
+
+    const exercises: PlannedExercise[] =
+      status === "train"
+        ? (raw?.exercises ?? [])
+            .filter((ex) => {
+              const entry = poolById.get(ex.exerciseTemplateId);
+              return !!entry && entry.title === ex.exerciseTitle && typeof ex.workingSets === "number" && ex.workingSets > 0;
+            })
+            .map((ex) => {
+              const entry = poolById.get(ex.exerciseTemplateId)!;
+              return {
+                exerciseTemplateId: entry.exerciseTemplateId,
+                exerciseTitle: entry.title,
+                muscle: entry.muscle,
+                workingSets: ex.workingSets,
+                weightKg: entry.weightKg,
+                reps: entry.reps,
+                restSeconds: entry.restSeconds,
+                rationale: ex.rationale ?? "",
+              };
+            })
+        : [];
+
+    return {
+      date: avail.date,
+      weekday: WEEKDAY_LABELS[avail.weekday],
+      status,
+      sessionTitle: status === "train" ? raw?.sessionTitle || "Training" : null,
+      exercises,
+      rationale: raw?.rationale || (avail.available ? "" : avail.reason),
+      hevyRoutineId: null,
+    };
+  });
+}
+
+export async function generateAdaptedWeekPlan(
+  userId: string,
+  hevyApiKey: string,
+  anthropicApiKey: string,
+  weekStart: Date
+): Promise<{ summary: string; days: PlannedDay[] }> {
+  const data = await gatherWeekPlanData(userId, hevyApiKey, weekStart);
+  const text = await callCoachModel(buildWeekPlanSystemPrompt(), buildWeekPlanUserPrompt(data), anthropicApiKey);
+  const parsed = parseWeekPlanJson(text);
+  const days = buildPlannedDays(parsed, data.pool, data.availability);
+  return { summary: parsed.summary, days };
+}
+
+// Builds the Hevy routine-creation payload for one already-planned training
+// day. Weight/reps/rest come from the exercise's existing baseline (attached
+// deterministically in buildPlannedDays), never from the LLM.
+export function buildCreateRoutinePayload(day: PlannedDay): { title: string; notes: string | null; exercises: HevyExerciseUpdate[] } {
+  const exercises: HevyExerciseUpdate[] = day.exercises.map((ex) => ({
+    exercise_template_id: ex.exerciseTemplateId,
+    superset_id: null,
+    rest_seconds: ex.restSeconds,
+    notes: null,
+    sets: Array.from({ length: ex.workingSets }, () => ({
+      type: "normal" as const,
+      weight_kg: ex.weightKg,
+      reps: ex.reps,
+      distance_meters: null,
+      duration_seconds: null,
+      custom_metric: null,
+    })),
+  }));
+
+  return {
+    title: `${day.sessionTitle ?? "Training"} — Week of ${day.date} (adapted)`,
+    notes: day.rationale || null,
+    exercises,
+  };
 }
 
 function emptySet(): HevySetUpdate {

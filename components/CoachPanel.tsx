@@ -6,6 +6,8 @@ import ReactMarkdown from "react-markdown";
 import type { CoachReview } from "@/app/coach/page";
 import type { ProposedTargetEdit } from "@/lib/coach";
 import RoutineDraftCard from "@/components/RoutineDraftCard";
+import WeekPlanCard from "@/components/WeekPlanCard";
+import { startOfWeek, addWeeks } from "@/lib/workoutStats";
 
 const REVIEW_MARKDOWN_STYLE: CSSProperties = { fontSize: 14, lineHeight: 1.5 };
 
@@ -90,9 +92,11 @@ const markdownComponents = {
 function ReviewCard({ review }: { review: CoachReview }) {
   const [expanded, setExpanded] = useState(false);
   const routineIds = Array.from(new Set(review.proposed_edits.map((e) => e.routineId)));
+  const unpushedDays = review.week_plan.filter((d) => d.status === "train" && d.exercises.length > 0 && !d.hevyRoutineId);
   const pendingCount =
-    routineIds.length +
-    review.proposed_target_edits.filter((e) => e.status === "pending").length;
+    review.review_type === "week_plan"
+      ? unpushedDays.length
+      : routineIds.length + review.proposed_target_edits.filter((e) => e.status === "pending").length;
 
   return (
     <div style={{ background: "#14171b", border: "1px solid #23262b", borderRadius: 10, padding: 16 }}>
@@ -129,30 +133,36 @@ function ReviewCard({ review }: { review: CoachReview }) {
             <ReactMarkdown components={markdownComponents}>{review.review}</ReactMarkdown>
           </div>
 
-          {routineIds.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: review.proposed_target_edits.length ? 16 : 0 }}>
-              {routineIds.map((routineId) => {
-                const edits = review.proposed_edits.filter((e) => e.routineId === routineId);
-                return (
-                  <RoutineDraftCard
-                    key={routineId}
-                    reviewId={review.id}
-                    routineId={routineId}
-                    routineTitle={edits[0].routineTitle}
-                    edits={edits}
-                  />
-                );
-              })}
-            </div>
-          )}
+          {review.review_type === "week_plan" ? (
+            <WeekPlanCard reviewId={review.id} days={review.week_plan} />
+          ) : (
+            <>
+              {routineIds.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: review.proposed_target_edits.length ? 16 : 0 }}>
+                  {routineIds.map((routineId) => {
+                    const edits = review.proposed_edits.filter((e) => e.routineId === routineId);
+                    return (
+                      <RoutineDraftCard
+                        key={routineId}
+                        reviewId={review.id}
+                        routineId={routineId}
+                        routineTitle={edits[0].routineTitle}
+                        edits={edits}
+                      />
+                    );
+                  })}
+                </div>
+              )}
 
-          {review.proposed_target_edits.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ color: "#888", fontSize: 12 }}>Proposed weekly volume target changes</div>
-              {review.proposed_target_edits.map((edit) => (
-                <TargetEditRow key={edit.id} reviewId={review.id} edit={edit} />
-              ))}
-            </div>
+              {review.proposed_target_edits.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ color: "#888", fontSize: 12 }}>Proposed weekly volume target changes</div>
+                  {review.proposed_target_edits.map((edit) => (
+                    <TargetEditRow key={edit.id} reviewId={review.id} edit={edit} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -163,19 +173,33 @@ function ReviewCard({ review }: { review: CoachReview }) {
 const TAB_LABEL: Record<CoachReview["review_type"], string> = {
   performance: "Weekly reviews",
   plan: "Routines review",
+  week_plan: "Adapted week plans",
 };
 
-const TABS: CoachReview["review_type"][] = ["performance", "plan"];
+const TABS: CoachReview["review_type"][] = ["performance", "plan", "week_plan"];
+
+// Next Monday's date (YYYY-MM-DD), the sensible default target for "plan an
+// upcoming week" -- today's own week is already underway. Built from local
+// date components rather than toISOString(), which would shift the date by
+// the browser's UTC offset and could land on the wrong calendar day.
+function nextMondayInputDefault(): string {
+  const monday = addWeeks(startOfWeek(), 1);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, "0");
+  const d = String(monday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 export default function CoachPanel({ initialReviews }: { initialReviews: CoachReview[] }) {
   const router = useRouter();
   const [generatingType, setGeneratingType] = useState<CoachReview["review_type"] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<CoachReview["review_type"]>("performance");
+  const [weekStartInput, setWeekStartInput] = useState(nextMondayInputDefault);
 
   const tabReviews = initialReviews.filter((r) => r.review_type === activeTab);
 
-  async function generate(type: CoachReview["review_type"]) {
+  async function generate(type: "performance" | "plan") {
     setGeneratingType(type);
     setError(null);
     try {
@@ -188,6 +212,27 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to generate review");
+    } finally {
+      setGeneratingType(null);
+    }
+  }
+
+  async function generateWeekPlan() {
+    setGeneratingType("week_plan");
+    setError(null);
+    try {
+      const res = await fetch("/api/coach/week-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStart: weekStartInput }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `request failed (${res.status})`);
+      }
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "failed to generate week plan");
     } finally {
       setGeneratingType(null);
     }
@@ -225,6 +270,41 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
           }}
         >
           {generatingType === "plan" ? "Reviewing your routines…" : "Review my favorite routines"}
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <label style={{ color: "#888", fontSize: 12 }}>
+          Plan the week of{" "}
+          <input
+            type="date"
+            value={weekStartInput}
+            onChange={(e) => setWeekStartInput(e.target.value)}
+            style={{
+              background: "#14171b",
+              color: "#e6e6e6",
+              border: "1px solid #333",
+              borderRadius: 6,
+              padding: "6px 8px",
+              fontSize: 13,
+              marginLeft: 6,
+            }}
+          />
+        </label>
+        <button
+          onClick={generateWeekPlan}
+          disabled={generatingType !== null || !weekStartInput}
+          style={{
+            background: "#2a2d33",
+            color: "#e2e2e2",
+            border: "1px solid #3a3d44",
+            borderRadius: 8,
+            padding: "8px 16px",
+            fontSize: 13,
+            cursor: generatingType ? "default" : "pointer",
+          }}
+        >
+          {generatingType === "week_plan" ? "Adapting your week…" : "Adapt this week's plan"}
         </button>
       </div>
       {error && <div style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</div>}

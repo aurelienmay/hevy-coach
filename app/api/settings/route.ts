@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isVolumeTargets, isTrainingProfile, isMusclePriorities } from "@/lib/validation";
+import { isVolumeTargets, isTrainingProfile, isMusclePriorities, isNormalTrainingWeek, isScheduleExceptions } from "@/lib/validation";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -17,13 +17,23 @@ export async function POST(req: NextRequest) {
     volume_targets?: unknown;
     training_profile?: unknown;
     muscle_priorities?: unknown;
+    normal_training_week?: unknown;
+    schedule_exceptions?: unknown;
   };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  const { hevy_api_key, anthropic_api_key, volume_targets, training_profile, muscle_priorities } = body;
+  const {
+    hevy_api_key,
+    anthropic_api_key,
+    volume_targets,
+    training_profile,
+    muscle_priorities,
+    normal_training_week,
+    schedule_exceptions,
+  } = body;
 
   if (typeof hevy_api_key !== "string" || !hevy_api_key.trim()) {
     return NextResponse.json({ error: "hevy_api_key is required" }, { status: 400 });
@@ -40,6 +50,12 @@ export async function POST(req: NextRequest) {
   if (muscle_priorities != null && !isMusclePriorities(muscle_priorities)) {
     return NextResponse.json({ error: "muscle_priorities must be an object of {muscle: 'maintain'|'normal'|'focus'}" }, { status: 400 });
   }
+  if (normal_training_week != null && !isNormalTrainingWeek(normal_training_week)) {
+    return NextResponse.json({ error: "normal_training_week must be an array of weekday indices (0-6)" }, { status: 400 });
+  }
+  if (schedule_exceptions != null && !isScheduleExceptions(schedule_exceptions)) {
+    return NextResponse.json({ error: "schedule_exceptions must be an array of {id, startDate, endDate, note}" }, { status: 400 });
+  }
 
   const { error } = await supabase.from("user_settings").upsert({
     user_id: user.id,
@@ -48,6 +64,8 @@ export async function POST(req: NextRequest) {
     volume_targets,
     training_profile,
     muscle_priorities,
+    normal_training_week,
+    schedule_exceptions,
     updated_at: new Date().toISOString(),
   });
 

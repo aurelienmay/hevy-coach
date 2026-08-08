@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { defaultVolumeTargetsFor } from "@/lib/volumeTargets";
 import { DEFAULT_TRAINING_PROFILE, type TrainingProfile, type MusclePriorities } from "@/lib/trainingProfile";
+import { DEFAULT_NORMAL_TRAINING_WEEK, type NormalTrainingWeek, type ScheduleException } from "@/lib/schedule";
 
 // Middleware already contacts the Supabase Auth server to verify the JWT and
 // guarantees a signed-in user for every non-public route -- it forwards the
@@ -89,6 +90,31 @@ export async function getMusclePriorities(userId: string): Promise<MusclePriorit
     .maybeSingle();
 
   return (data?.muscle_priorities as MusclePriorities | null) ?? {};
+}
+
+// Merges a saved normal-training-week pattern over the app default (Mon-Sat).
+export async function getNormalTrainingWeek(userId: string): Promise<NormalTrainingWeek> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("normal_training_week")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return (data?.normal_training_week as NormalTrainingWeek | null) ?? DEFAULT_NORMAL_TRAINING_WEEK;
+}
+
+// One-off unavailable date ranges (holidays, travel, etc.) -- defaults to
+// none, unlike the other getters here there's no non-empty default to merge.
+export async function getScheduleExceptions(userId: string): Promise<ScheduleException[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("schedule_exceptions")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return (data?.schedule_exceptions as ScheduleException[] | null) ?? [];
 }
 
 export async function getVolumeTargets(userId: string): Promise<VolumeTargets> {

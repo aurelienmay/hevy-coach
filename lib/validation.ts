@@ -52,3 +52,29 @@ export function isMusclePriorities(value: unknown): value is Record<string, stri
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   return Object.values(value).every((v) => typeof v === "string" && MUSCLE_PRIORITIES.includes(v));
 }
+
+export function isNormalTrainingWeek(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 6);
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isScheduleException(value: unknown): value is { id: string; startDate: string; endDate: string; note: string } {
+  if (typeof value !== "object" || value === null) return false;
+  const e = value as Record<string, unknown>;
+  return (
+    typeof e.id === "string" &&
+    !!e.id &&
+    typeof e.startDate === "string" &&
+    DATE_RE.test(e.startDate) &&
+    typeof e.endDate === "string" &&
+    DATE_RE.test(e.endDate) &&
+    e.endDate >= e.startDate &&
+    typeof e.note === "string" &&
+    e.note.length <= 200
+  );
+}
+
+export function isScheduleExceptions(value: unknown): value is { id: string; startDate: string; endDate: string; note: string }[] {
+  return Array.isArray(value) && value.every(isScheduleException);
+}
