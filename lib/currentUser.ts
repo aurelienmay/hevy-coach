@@ -117,6 +117,73 @@ export async function getScheduleExceptions(userId: string): Promise<ScheduleExc
   return (data?.schedule_exceptions as ScheduleException[] | null) ?? [];
 }
 
+// A tagged pool of routines the AI Coach reuses for schedule-adapted week
+// plans, exactly like favorite_routines but a separate tag -- toggled the
+// same way (see app/api/routines/[id]/adapted-plan/route.ts). Order matters:
+// added_at defines which "slot" (i.e. which training day of an adapted week)
+// each routine fills, oldest-tagged first -- see
+// app/api/coach/week-plan/push/route.ts.
+export async function getAdaptedPlanRoutineIds(userId: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("adapted_plan_routines")
+    .select("routine_id")
+    .eq("user_id", userId)
+    .order("added_at", { ascending: true });
+
+  return (data ?? []).map((row) => row.routine_id);
+}
+
+export async function addAdaptedPlanRoutine(userId: string, routineId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("adapted_plan_routines")
+    .upsert({ user_id: userId, routine_id: routineId }, { onConflict: "user_id,routine_id" });
+  if (error) throw error;
+}
+
+export async function removeAdaptedPlanRoutine(userId: string, routineId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("adapted_plan_routines")
+    .delete()
+    .eq("user_id", userId)
+    .eq("routine_id", routineId);
+  if (error) throw error;
+}
+
+// A tagged pool of routines to compare against the current plan (favorites),
+// exactly like favorite_routines/adapted_plan_routines -- toggled the same
+// way (see app/api/routines/[id]/compare-plan/route.ts).
+export async function getComparePlanRoutineIds(userId: string): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("compare_plan_routines")
+    .select("routine_id")
+    .eq("user_id", userId)
+    .order("added_at", { ascending: true });
+
+  return (data ?? []).map((row) => row.routine_id);
+}
+
+export async function addComparePlanRoutine(userId: string, routineId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("compare_plan_routines")
+    .upsert({ user_id: userId, routine_id: routineId }, { onConflict: "user_id,routine_id" });
+  if (error) throw error;
+}
+
+export async function removeComparePlanRoutine(userId: string, routineId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("compare_plan_routines")
+    .delete()
+    .eq("user_id", userId)
+    .eq("routine_id", routineId);
+  if (error) throw error;
+}
+
 export async function getVolumeTargets(userId: string): Promise<VolumeTargets> {
   const supabase = await createClient();
   const { data } = await supabase

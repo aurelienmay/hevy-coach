@@ -1,7 +1,7 @@
 // Shared helpers for deriving stats from live Hevy workout data (replaces
 // what used to be SQL aggregations over the synced workouts/sets tables).
 import type { HevyWorkout } from "@/lib/hevy";
-import { muscleFor } from "@/lib/muscleMap";
+import { muscleForTemplate, type MuscleIndex } from "@/lib/exerciseTemplates";
 
 // Monday 00:00, matching Postgres's date_trunc('week', ...) (ISO weeks start Monday).
 export function startOfWeek(d: Date = new Date()): Date {
@@ -34,11 +34,11 @@ export function workingSetsCount(w: HevyWorkout): number {
 
 export type MuscleVolume = { muscle: string; sets: number };
 
-export function muscleVolume(workouts: HevyWorkout[], excludedMuscles: string[]): MuscleVolume[] {
+export function muscleVolume(workouts: HevyWorkout[], excludedMuscles: string[], index: MuscleIndex): MuscleVolume[] {
   const counts: Record<string, number> = {};
   for (const w of workouts) {
     for (const ex of w.exercises) {
-      const muscle = muscleFor(ex.title);
+      const muscle = muscleForTemplate(ex.exercise_template_id, index);
       if (excludedMuscles.includes(muscle)) continue;
       const sets = ex.sets.filter((s) => s.type !== "warmup").length;
       if (sets === 0) continue;
@@ -48,6 +48,21 @@ export function muscleVolume(workouts: HevyWorkout[], excludedMuscles: string[])
   return Object.entries(counts)
     .map(([muscle, sets]) => ({ muscle, sets }))
     .sort((a, b) => b.sets - a.sets);
+}
+
+// Exercise titles with working sets logged this range whose exercise_template_id
+// has no entry in the index at all (e.g. the templates fetch missed it), so
+// their sets were dropped from muscle volume totals.
+export function unmappedExerciseTitles(workouts: HevyWorkout[], index: MuscleIndex): string[] {
+  const titles = new Set<string>();
+  for (const w of workouts) {
+    for (const ex of w.exercises) {
+      if (!index.has(ex.exercise_template_id) && ex.sets.some((s) => s.type !== "warmup")) {
+        titles.add(ex.title);
+      }
+    }
+  }
+  return [...titles].sort();
 }
 
 export function workoutsInRange(workouts: HevyWorkout[], from: Date, to?: Date): HevyWorkout[] {

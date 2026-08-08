@@ -3,6 +3,7 @@
 // extend it as you add new exercises to your routines.
 export const MUSCLE_MAP: Record<string, string> = {
   "Ab Wheel": "abs",
+  "Arnold Press (Dumbbell)": "shoulders",
   "Around The World": "shoulders",
   "Back Extension (Machine)": "lower_back",
   "Back Extension (Weighted Hyperextension)": "lower_back",
@@ -49,6 +50,7 @@ export const MUSCLE_MAP: Record<string, string> = {
   "Hip Abduction (Machine)": "glutes",
   "Hip Adduction (Machine)": "glutes",
   "Hip Thrust (Barbell)": "glutes",
+  "Incline Bench Press (Barbell)": "chest",
   "Incline Bench Press (Dumbbell)": "chest",
   "Incline Bench Press (Smith Machine)": "chest",
   "Incline Chest Fly (Dumbbell)": "chest",
@@ -77,8 +79,12 @@ export const MUSCLE_MAP: Record<string, string> = {
   "Lying Leg Raise": "abs",
   "Overhead Curl (Cable)": "biceps",
   "Overhead Press (Barbell)": "shoulders",
+  "Overhead Press (Cable)": "shoulders",
   "Overhead Press (Dumbbell)": "shoulders",
   "Overhead Press (Smith Machine)": "shoulders",
+  "Landmine Press": "shoulders",
+  "Push Press": "shoulders",
+  "Push Press (Barbell)": "shoulders",
   "Pendlay Row (Barbell)": "back",
   "Pendulum Squat (Machine)": "quads",
   "Plank": "abs",
@@ -111,13 +117,16 @@ export const MUSCLE_MAP: Record<string, string> = {
   "Seated Palms Up Wrist Curl": "forearms",
   "Seated Row (Machine)": "back",
   "Seated Shoulder Press (Machine)": "shoulders",
+  "Shoulder Press (Cable)": "shoulders",
   "Shoulder Press (Dumbbell)": "shoulders",
+  "Shoulder Press (Machine)": "shoulders",
   "Shrug (Dumbbell)": "back",
   "Shrug (Machine)": "back",
   "Single Arm Cable Row": "back",
   "Single Arm Curl (Cable)": "biceps",
   "Single Arm Lat Pulldown": "back",
   "Single Arm Lateral Raise (Cable)": "shoulders",
+  "Single Arm Overhead Press (Dumbbell)": "shoulders",
   "Single Arm Triceps Pushdown (Cable)": "triceps",
   "Single Leg Standing Calf Raise (Barbell)": "calves",
   "Skullcrusher (Barbell)": "triceps",
@@ -143,6 +152,9 @@ export const MUSCLE_MAP: Record<string, string> = {
   "Triceps Pushdown": "triceps",
   "Triceps Rope Pushdown": "triceps",
   "Unilateral Hammer Curl Cable": "biceps",
+  "Upright Row (Barbell)": "shoulders",
+  "Upright Row (Cable)": "shoulders",
+  "Upright Row (Dumbbell)": "shoulders",
   "Walking": "cardio",
   "Warm Up": "other",
   "Wrist Roller": "forearms",
@@ -150,4 +162,12 @@ export const MUSCLE_MAP: Record<string, string> = {
 
 export function muscleFor(title: string): string {
   return MUSCLE_MAP[title] ?? "other";
+}
+
+// True only for titles that fell through to the "other" fallback because
+// they're missing from MUSCLE_MAP, as opposed to titles explicitly mapped
+// to "other" (e.g. "Warm Up"). Used to surface gaps in the map instead of
+// silently dropping their sets from muscle volume totals.
+export function isUnmapped(title: string): boolean {
+  return !(title in MUSCLE_MAP);
 }

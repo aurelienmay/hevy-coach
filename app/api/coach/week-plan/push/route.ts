@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireHevyApiKey } from "@/lib/currentUser";
-import { createRoutine, HevyApiError } from "@/lib/hevy";
+import { requireHevyApiKey, getAdaptedPlanRoutineIds, addAdaptedPlanRoutine } from "@/lib/currentUser";
+import { createRoutine, updateRoutine, HevyApiError } from "@/lib/hevy";
 import { buildCreateRoutinePayload, type PlannedDay } from "@/lib/coach";
 
 export async function POST(req: NextRequest) {
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "date is required" }, { status: 400 });
   }
 
-  const { apiKey } = await requireHevyApiKey();
+  const { userId, apiKey } = await requireHevyApiKey();
   const supabase = await createClient();
 
   const { data: reviewRow } = await supabase
@@ -46,15 +46,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "this day was already pushed to Hevy" }, { status: 409 });
   }
 
-  let created;
+  // Which routine in the user's tagged adaptation pool this day maps to: its
+  // ordinal position among this week's training days, in date order, against
+  // the pool ordered oldest-tagged-first. Pushing overwrites that routine in
+  // place (via PUT) instead of piling up a new one every time -- only
+  // falling back to creating (and auto-tagging) a new routine when the pool
+  // doesn't yet have enough entries for this many training days.
+  const trainingDays = days.filter((d) => d.status === "train" && d.exercises.length > 0);
+  const dayPosition = trainingDays.findIndex((d) => d.date === date);
+
+  const payload = buildCreateRoutinePayload(day);
+  const pool = await getAdaptedPlanRoutineIds(userId);
+  const existingRoutineId = pool[dayPosition];
+
+  let hevyRoutineId: string;
   try {
-    created = await createRoutine(apiKey, buildCreateRoutinePayload(day));
+    if (existingRoutineId) {
+      const updated = await updateRoutine(apiKey, existingRoutineId, payload);
+      hevyRoutineId = updated.id;
+    } else {
+      const created = await createRoutine(apiKey, payload);
+      hevyRoutineId = created.id;
+      await addAdaptedPlanRoutine(userId, hevyRoutineId);
+    }
   } catch (err) {
     const status = err instanceof HevyApiError ? err.status : 400;
-    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to create routine" }, { status });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "failed to push to Hevy" }, { status });
   }
 
-  const updatedDays = days.map((d, i) => (i === dayIndex ? { ...d, hevyRoutineId: created.id } : d));
+  const updatedDays = days.map((d, i) => (i === dayIndex ? { ...d, hevyRoutineId } : d));
   const { data: row, error } = await supabase
     .from("coach_reviews")
     .update({ week_plan: updatedDays })

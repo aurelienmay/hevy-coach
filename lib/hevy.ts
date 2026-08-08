@@ -214,3 +214,39 @@ export async function fetchAllRoutines(apiKey: string): Promise<HevyRoutine[]> {
 
   return all;
 }
+
+// Hevy assigns primary/secondary muscle groups to every exercise template --
+// including custom ones, which require a primary muscle at creation time --
+// so this is the authoritative source for muscle mapping (see lib/exerciseTemplates.ts),
+// unlike the hand-maintained title-based lib/muscleMap.ts.
+export type HevyExerciseTemplate = {
+  id: string;
+  title: string;
+  is_custom: boolean;
+  primary_muscle_group: string;
+  secondary_muscle_groups: string[];
+};
+
+export async function fetchAllExerciseTemplates(apiKey: string): Promise<HevyExerciseTemplate[]> {
+  const all: HevyExerciseTemplate[] = [];
+  let page = 1;
+  const pageSize = 100; // Hevy's documented max per page for /exercise_templates
+
+  while (true) {
+    const res = await fetch(`${API_BASE}/exercise_templates?page=${page}&pageSize=${pageSize}`, {
+      headers: headers(apiKey),
+      cache: "no-store",
+    });
+    if (!res.ok) throw new HevyApiError(res.status, await res.text());
+    const data = await res.json();
+    const batch: HevyExerciseTemplate[] = data.exercise_templates ?? [];
+    if (batch.length === 0) break;
+
+    all.push(...batch);
+
+    if (page >= (data.page_count ?? page)) break;
+    page++;
+  }
+
+  return all;
+}

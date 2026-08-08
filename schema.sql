@@ -5,6 +5,8 @@
 -- below is scoped to auth.uid() via Row Level Security, so each user only
 -- ever sees/writes their own rows.
 
+drop table if exists compare_plan_routines;
+drop table if exists adapted_plan_routines;
 drop table if exists coach_reviews;
 drop table if exists favorite_routines;
 drop table if exists user_settings;
@@ -31,6 +33,30 @@ create table user_settings (
 --   alter table coach_reviews drop constraint if exists coach_reviews_review_type_check;
 --   alter table coach_reviews add constraint coach_reviews_review_type_check
 --     check (review_type in ('performance', 'plan', 'week_plan'));
+--   create table if not exists adapted_plan_routines (
+--     user_id uuid not null references auth.users(id) on delete cascade,
+--     routine_id text not null,
+--     added_at timestamptz not null default now(),
+--     primary key (user_id, routine_id)
+--   );
+--   alter table adapted_plan_routines enable row level security;
+--   create policy "own rows only" on adapted_plan_routines
+--     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+--
+--   If you already created adapted_plan_routines with the older slot_index
+--   shape (from an earlier version of this feature), drop and recreate it
+--   instead -- it's just a reusable-routine-id cache, safe to reset:
+--     drop table if exists adapted_plan_routines;
+--   then run the create table + RLS statements above.
+--   create table if not exists compare_plan_routines (
+--     user_id uuid not null references auth.users(id) on delete cascade,
+--     routine_id text not null,
+--     added_at timestamptz not null default now(),
+--     primary key (user_id, routine_id)
+--   );
+--   alter table compare_plan_routines enable row level security;
+--   create policy "own rows only" on compare_plan_routines
+--     for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create table favorite_routines (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -53,9 +79,36 @@ create table coach_reviews (
 
 create index idx_coach_reviews_user_created on coach_reviews(user_id, created_at);
 
+-- A tagged pool of routines (toggled the same way as favorite_routines) that
+-- "Push to Hevy" writes an adapted week's sessions into -- overwriting the
+-- oldest-tagged routine for each successive training day, in place via PUT,
+-- instead of creating a new routine every time a week plan is pushed. Keeps
+-- a user's Hevy routine list from accumulating one-off routines every week.
+-- If the pool has fewer routines than a given week needs, the coach creates
+-- one and tags it here automatically, growing the pool for future weeks.
+create table adapted_plan_routines (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  routine_id text not null,    -- Hevy routine id
+  added_at timestamptz not null default now(),
+  primary key (user_id, routine_id)
+);
+
+-- A tagged pool of routines to compare against the current plan (favorites),
+-- toggled the same way as favorite_routines/adapted_plan_routines -- replaces
+-- the old "compare plan" UI's ephemeral, per-page-load client-side selection
+-- with a persisted tag, so the comparison set survives reloads.
+create table compare_plan_routines (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  routine_id text not null,    -- Hevy routine id
+  added_at timestamptz not null default now(),
+  primary key (user_id, routine_id)
+);
+
 alter table user_settings enable row level security;
 alter table favorite_routines enable row level security;
 alter table coach_reviews enable row level security;
+alter table adapted_plan_routines enable row level security;
+alter table compare_plan_routines enable row level security;
 
 create policy "own rows only" on user_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
@@ -64,4 +117,10 @@ create policy "own rows only" on favorite_routines
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "own rows only" on coach_reviews
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own rows only" on adapted_plan_routines
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "own rows only" on compare_plan_routines
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

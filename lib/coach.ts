@@ -1,4 +1,4 @@
-import { muscleFor } from "@/lib/muscleMap";
+import { buildMuscleIndex, getExerciseTemplates, muscleForTemplate, type MuscleIndex } from "@/lib/exerciseTemplates";
 import { EXCLUDED_MUSCLES } from "@/lib/volumeTargets";
 import { computePlanVolume } from "@/lib/planVolume";
 import type { Routine, RoutineExercise, RoutineSet } from "@/components/RoutineCard";
@@ -89,18 +89,21 @@ type WeeklyData = {
   targets: VolumeTargets;
   profile: TrainingProfile;
   musclePriorities: MusclePriorities;
+  muscleIndex: MuscleIndex;
 };
 
 async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<WeeklyData> {
   const supabase = await createClient();
-  const [allRoutines, workouts, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
+  const [allRoutines, workouts, templates, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
     fetchAllWorkouts(hevyApiKey, new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000).toISOString()),
+    getExerciseTemplates(hevyApiKey),
     supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
     getVolumeTargets(userId),
     getTrainingProfile(userId),
     getMusclePriorities(userId),
   ]);
+  const muscleIndex = buildMuscleIndex(templates);
   const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
   const favorites: Routine[] = allRoutines
     .filter((r) => favoriteIds.has(r.id))
@@ -109,14 +112,14 @@ async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<Wee
 
   const weekStart = startOfWeek();
   const thisWeekWorkouts = workoutsInRange(workouts, weekStart);
-  const currentWeekVolume = muscleVolume(thisWeekWorkouts, EXCLUDED_MUSCLES);
+  const currentWeekVolume = muscleVolume(thisWeekWorkouts, EXCLUDED_MUSCLES, muscleIndex);
 
   const priorWeeksVolume: { weekStart: string; muscle: string; sets: number }[] = [];
   for (let i = 1; i <= 4; i++) {
     const from = new Date(weekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
     const to = new Date(weekStart.getTime() - (i - 1) * 7 * 24 * 60 * 60 * 1000);
     const weekWorkouts = workoutsInRange(workouts, from, to);
-    for (const { muscle, sets } of muscleVolume(weekWorkouts, EXCLUDED_MUSCLES)) {
+    for (const { muscle, sets } of muscleVolume(weekWorkouts, EXCLUDED_MUSCLES, muscleIndex)) {
       priorWeeksVolume.push({ weekStart: from.toISOString().slice(0, 10), muscle, sets });
     }
   }
@@ -131,19 +134,19 @@ async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<Wee
       totalSets: w.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
       // Per-session breakdown (not just weekly totals) is what makes the
       // 48-72h same-muscle spacing rule actually checkable by the coach.
-      muscles: muscleVolume([w], EXCLUDED_MUSCLES),
+      muscles: muscleVolume([w], EXCLUDED_MUSCLES, muscleIndex),
     }));
 
   const exerciseIds = Array.from(
     new Set(favorites.flatMap((r) => (r.exercises ?? []).map((ex) => ex.exercise_template_id).filter(Boolean)))
   );
 
-  const progression = gatherProgression(workouts, exerciseIds);
+  const progression = gatherProgression(workouts, exerciseIds, muscleIndex);
 
   return {
     weekStart: new Date().toISOString(),
     currentWeekVolume,
-    planVolume: computePlanVolume(favorites),
+    planVolume: computePlanVolume(favorites, muscleIndex),
     priorWeeksVolume,
     sessionsThisWeek,
     progression,
@@ -151,10 +154,11 @@ async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<Wee
     targets,
     profile,
     musclePriorities,
+    muscleIndex,
   };
 }
 
-function gatherProgression(workouts: HevyWorkout[], exerciseIds: string[]): ExerciseProgression[] {
+function gatherProgression(workouts: HevyWorkout[], exerciseIds: string[], muscleIndex: MuscleIndex): ExerciseProgression[] {
   const wanted = new Set(exerciseIds);
   const byExercise = new Map<
     string,
@@ -167,7 +171,7 @@ function gatherProgression(workouts: HevyWorkout[], exerciseIds: string[]): Exer
       const workingSetsForEx = ex.sets.filter((s) => s.type !== "warmup");
       if (workingSetsForEx.length === 0) continue;
 
-      const muscle = muscleFor(ex.title);
+      const muscle = muscleForTemplate(ex.exercise_template_id, muscleIndex);
       if (!byExercise.has(ex.exercise_template_id)) {
         byExercise.set(ex.exercise_template_id, { title: ex.title, muscle, bySession: new Map() });
       }
@@ -353,7 +357,7 @@ function buildUserPrompt(data: WeeklyData): string {
       const working = ex.sets.filter((s) => s.type !== "warmup");
       const topWeight = working.length ? Math.max(...working.map((s) => s.weight_kg ?? 0)) : null;
       lines.push(
-        `  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
+        `  [${ex.index}] ${ex.title} (${muscleForTemplate(ex.exercise_template_id, data.muscleIndex)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
       );
     });
   }
@@ -499,24 +503,27 @@ type RoutinePlanData = {
   targets: VolumeTargets;
   profile: TrainingProfile;
   musclePriorities: MusclePriorities;
+  muscleIndex: MuscleIndex;
 };
 
 async function gatherRoutinePlanData(userId: string, hevyApiKey: string): Promise<RoutinePlanData> {
   const supabase = await createClient();
-  const [allRoutines, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
+  const [allRoutines, templates, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
+    getExerciseTemplates(hevyApiKey),
     supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
     getVolumeTargets(userId),
     getTrainingProfile(userId),
     getMusclePriorities(userId),
   ]);
+  const muscleIndex = buildMuscleIndex(templates);
   const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
   const favorites: Routine[] = allRoutines
     .filter((r) => favoriteIds.has(r.id))
     .map((r) => ({ ...r, is_favorite: true }))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  return { favorites, planVolume: computePlanVolume(favorites), targets, profile, musclePriorities };
+  return { favorites, planVolume: computePlanVolume(favorites, muscleIndex), targets, profile, musclePriorities, muscleIndex };
 }
 
 function buildRoutinePlanSystemPrompt(): string {
@@ -591,7 +598,7 @@ function buildRoutinePlanUserPrompt(data: RoutinePlanData): string {
       const working = ex.sets.filter((s) => s.type !== "warmup");
       const topWeight = working.length ? Math.max(...working.map((s) => s.weight_kg ?? 0)) : null;
       lines.push(
-        `  [${ex.index}] ${ex.title} (${muscleFor(ex.title)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
+        `  [${ex.index}] ${ex.title} (${muscleForTemplate(ex.exercise_template_id, data.muscleIndex)}) — ${working.length} working sets, top weight ${topWeight ?? "?"}kg, rest ${ex.rest_seconds ?? "?"}s`
       );
     });
   }
@@ -663,8 +670,9 @@ type WeekPlanData = {
 
 async function gatherWeekPlanData(userId: string, hevyApiKey: string, weekStart: Date): Promise<WeekPlanData> {
   const supabase = await createClient();
-  const [allRoutines, { data: favoriteRows }, targets, profile, musclePriorities, normalWeek, exceptions] = await Promise.all([
+  const [allRoutines, templates, { data: favoriteRows }, targets, profile, musclePriorities, normalWeek, exceptions] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
+    getExerciseTemplates(hevyApiKey),
     supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
     getVolumeTargets(userId),
     getTrainingProfile(userId),
@@ -672,6 +680,7 @@ async function gatherWeekPlanData(userId: string, hevyApiKey: string, weekStart:
     getNormalTrainingWeek(userId),
     getScheduleExceptions(userId),
   ]);
+  const muscleIndex = buildMuscleIndex(templates);
   const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
   const favorites: Routine[] = allRoutines
     .filter((r) => favoriteIds.has(r.id))
@@ -697,7 +706,7 @@ async function gatherWeekPlanData(userId: string, hevyApiKey: string, weekStart:
       pool.set(ex.exercise_template_id, {
         exerciseTemplateId: ex.exercise_template_id,
         title: ex.title,
-        muscle: muscleFor(ex.title),
+        muscle: muscleForTemplate(ex.exercise_template_id, muscleIndex),
         workingSets: working.length,
         weightKg: topSet?.weight_kg ?? null,
         reps: topSet?.reps ?? working[0]?.reps ?? null,

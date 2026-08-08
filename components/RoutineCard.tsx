@@ -25,7 +25,7 @@ const MUSCLE_COLORS: Record<string, string> = {
 export type RoutineSet = HevySet;
 export type RoutineExercise = HevyExercise;
 
-export type Routine = HevyRoutine & { is_favorite: boolean };
+export type Routine = HevyRoutine & { is_favorite: boolean; is_adapted_plan?: boolean; is_compare_plan?: boolean };
 
 function formatSet(s: RoutineSet): string {
   if (s.duration_seconds) return `${Math.round(s.duration_seconds / 60)} min`;
@@ -38,12 +38,16 @@ function formatSet(s: RoutineSet): string {
 export default function RoutineCard({ routine, compact = false }: { routine: Routine; compact?: boolean }) {
   const router = useRouter();
   const [favorite, setFavorite] = useState(routine.is_favorite);
-  const [pending, setPending] = useState(false);
+  const [favoritePending, setFavoritePending] = useState(false);
+  const [adapted, setAdapted] = useState(routine.is_adapted_plan ?? false);
+  const [adaptedPending, setAdaptedPending] = useState(false);
+  const [compare, setCompare] = useState(routine.is_compare_plan ?? false);
+  const [comparePending, setComparePending] = useState(false);
 
   async function toggleFavorite() {
     const next = !favorite;
     setFavorite(next);
-    setPending(true);
+    setFavoritePending(true);
     try {
       await fetch(`/api/routines/${routine.id}/favorite`, {
         method: "POST",
@@ -54,7 +58,43 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
     } catch {
       setFavorite(!next);
     } finally {
-      setPending(false);
+      setFavoritePending(false);
+    }
+  }
+
+  async function toggleAdapted() {
+    const next = !adapted;
+    setAdapted(next);
+    setAdaptedPending(true);
+    try {
+      await fetch(`/api/routines/${routine.id}/adapted-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adapted: next }),
+      });
+      router.refresh();
+    } catch {
+      setAdapted(!next);
+    } finally {
+      setAdaptedPending(false);
+    }
+  }
+
+  async function toggleCompare() {
+    const next = !compare;
+    setCompare(next);
+    setComparePending(true);
+    try {
+      await fetch(`/api/routines/${routine.id}/compare-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compare: next }),
+      });
+      router.refresh();
+    } catch {
+      setCompare(!next);
+    } finally {
+      setComparePending(false);
     }
   }
 
@@ -63,12 +103,12 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
   const starButton = (
     <button
       onClick={toggleFavorite}
-      disabled={pending}
+      disabled={favoritePending}
       aria-label={favorite ? "Remove from favorites" : "Add to favorites"}
       style={{
         background: "none",
         border: "none",
-        cursor: pending ? "default" : "pointer",
+        cursor: favoritePending ? "default" : "pointer",
         fontSize: 18,
         color: favorite ? "#f7b84f" : "#444",
         lineHeight: 1,
@@ -76,6 +116,52 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
       }}
     >
       {favorite ? "★" : "☆"}
+    </button>
+  );
+
+  // Marks a routine as part of the AI Coach's reusable adaptation pool --
+  // same toggle mechanic as favoriting, just a separate tag (a routine can be
+  // both, either, or neither). See app/api/coach/week-plan/push/route.ts.
+  const adaptButton = (
+    <button
+      onClick={toggleAdapted}
+      disabled={adaptedPending}
+      aria-label={adapted ? "Remove from adaptation pool" : "Add to adaptation pool"}
+      title={adapted ? "In the AI Coach's adaptation pool" : "Add to the AI Coach's adaptation pool"}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: adaptedPending ? "default" : "pointer",
+        fontSize: 16,
+        color: adapted ? "#4f8ef7" : "#444",
+        lineHeight: 1,
+        padding: 0,
+      }}
+    >
+      ⟳
+    </button>
+  );
+
+  // Marks a routine as tagged into the "compare plan" set shown alongside
+  // the current plan for a volume comparison -- same toggle mechanic again,
+  // a fully independent tag. See components/RoutineComparison.tsx.
+  const compareButton = (
+    <button
+      onClick={toggleCompare}
+      disabled={comparePending}
+      aria-label={compare ? "Remove from compare plan" : "Add to compare plan"}
+      title={compare ? "In the compare plan" : "Add to the compare plan"}
+      style={{
+        background: "none",
+        border: "none",
+        cursor: comparePending ? "default" : "pointer",
+        fontSize: 15,
+        color: compare ? "#68d391" : "#444",
+        lineHeight: 1,
+        padding: 0,
+      }}
+    >
+      ⚖
     </button>
   );
 
@@ -93,7 +179,11 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
         }}
       >
         <span style={{ fontSize: 14 }}>{routine.title}</span>
-        {starButton}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {compareButton}
+          {adaptButton}
+          {starButton}
+        </div>
       </div>
     );
   }
@@ -102,7 +192,11 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
     <div style={{ background: "#14171b", border: "1px solid #23262b", borderRadius: 10, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>{routine.title}</h2>
-        {starButton}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {compareButton}
+          {adaptButton}
+          {starButton}
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

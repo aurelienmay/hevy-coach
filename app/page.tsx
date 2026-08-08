@@ -4,7 +4,16 @@ import HevyError from "@/components/HevyError";
 import PlanVolumeSummary from "@/components/PlanVolumeSummary";
 import { fetchAllWorkouts, type HevyWorkout } from "@/lib/hevy";
 import { requireHevyApiKey, getVolumeTargets } from "@/lib/currentUser";
-import { addWeeks, muscleVolume, startOfWeek, totalSetsCount, workingSetsCount, workoutsInRange } from "@/lib/workoutStats";
+import { buildMuscleIndex, getExerciseTemplates, type MuscleIndex } from "@/lib/exerciseTemplates";
+import {
+  addWeeks,
+  muscleVolume,
+  startOfWeek,
+  totalSetsCount,
+  unmappedExerciseTitles,
+  workingSetsCount,
+  workoutsInRange,
+} from "@/lib/workoutStats";
 
 export const dynamic = "force-dynamic";
 
@@ -29,11 +38,15 @@ export default async function OverviewPage({
 
   let workouts: HevyWorkout[];
   let targets;
+  let muscleIndex: MuscleIndex;
   try {
-    [workouts, targets] = await Promise.all([
+    let templates;
+    [workouts, templates, targets] = await Promise.all([
       fetchAllWorkouts(apiKey, weekStart.toISOString()),
+      getExerciseTemplates(apiKey),
       getVolumeTargets(userId),
     ]);
+    muscleIndex = buildMuscleIndex(templates);
   } catch (err) {
     return (
       <main>
@@ -48,7 +61,8 @@ export default async function OverviewPage({
   const sessions = [...thisWeek].sort(
     (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
   );
-  const volume = muscleVolume(thisWeek, EXCLUDED);
+  const volume = muscleVolume(thisWeek, EXCLUDED, muscleIndex);
+  const unmapped = unmappedExerciseTitles(thisWeek, muscleIndex);
 
   return (
     <main>
@@ -76,6 +90,12 @@ export default async function OverviewPage({
       <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
         {formatRange(weekStart, weekEnd)} · warm-up sets excluded.
       </p>
+
+      {unmapped.length > 0 && (
+        <p style={{ color: "#e0a030", fontSize: 13, marginBottom: 16 }}>
+          Not counted toward any muscle (unmapped exercise): {unmapped.join(", ")}
+        </p>
+      )}
 
       <PlanVolumeSummary
         volume={volume}
