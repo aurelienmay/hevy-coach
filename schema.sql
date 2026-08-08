@@ -14,8 +14,15 @@ create table user_settings (
   hevy_api_key text,
   anthropic_api_key text,      -- per-user; powers that user's own AI Coach calls only
   volume_targets jsonb,        -- null = use app defaults; else {muscle: {min, max}} overrides
+  training_profile jsonb,      -- null = defaults; else {goal, experienceLevel, daysPerWeek, sessionMinutes, notes}
+  muscle_priorities jsonb,     -- null = all "normal"; else {muscle: "maintain" | "normal" | "focus" | "ignore"}
   updated_at timestamptz not null default now()
 );
+
+-- If you're migrating an existing database instead of running this whole
+-- script fresh (which would drop your existing rows), run this instead:
+--   alter table user_settings add column if not exists training_profile jsonb;
+--   alter table user_settings add column if not exists muscle_priorities jsonb;
 
 create table favorite_routines (
   user_id uuid not null references auth.users(id) on delete cascade,

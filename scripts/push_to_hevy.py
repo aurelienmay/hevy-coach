@@ -44,36 +44,36 @@ HEADERS = {"api-key": API_KEY, "Content-Type": "application/json"}
 
 SPLIT = {
     "Day 1 - Back + Rear Delts + Biceps": [
-        ("Bent Over Row (Barbell)", "1-2 RIR", [(3, "6-10", 180)]),
+        ("Chest-Supported Row (Dumbbell)", "1-2 RIR", [(3, "6-10", 180)], [8, 4]),
         ("Pull Up (Weighted)", "1-2 RIR", [(3, "6-10", 180)]),
         ("Single Arm Cable Row", "1 RIR", [(3, "10-12", 100)]),
-        ("Rope Straight Arm Pulldown", "Failure", [(4, "12-15", 75)]),
-        ("Rear Delt Reverse Fly (Machine)", "Failure", [(2, "12-15", 75)]),
-        ("Lateral Raise (Dumbbell)", "Failure", [(2, "12-15", 75)]),
-        ("Hammer Curl (Dumbbell)", "Failure", [(4, "10-12", 75)]),
+        ("Rope Straight Arm Pulldown", "Failure", [(4, "12-15", 90)]),
+        ("Rear Delt Reverse Fly (Machine)", "Failure", [(2, "12-15", 90)]),
+        ("Lateral Raise (Cable)", "Failure", [(2, "12-15", 90)]),
+        ("Hammer Curl (Dumbbell)", "Failure", [(4, "10-12", 90)]),
     ],
     "Day 2 - Shoulders + Triceps": [
-        ("Seated Shoulder Press (Machine)", "1-2 RIR", [(3, "6-10", 180)]),
-        ("Lateral Raise (Dumbbell)", "Failure", [(2, "12-15", 75)]),
-        ("Rear Delt Reverse Fly (Machine)", "Failure", [(2, "12-15", 75)]),
-        ("Front Raise (Cable)", "Failure", [(2, "12-15", 75)]),
-        ("Triceps Pushdown", "Failure", [(4, "10-12", 75)]),
-        ("Triceps Extension (Cable)", "Failure", [(4, "10-12", 75)]),
+        ("Seated Shoulder Press (Machine)", "1-2 RIR", [(3, "6-10", 180)], [8, 4]),
+        ("Lateral Raise (Cable)", "Failure", [(2, "12-15", 90)]),
+        ("Rear Delt Reverse Fly (Machine)", "Failure", [(2, "12-15", 90)]),
+        ("Front Raise (Cable)", "Failure", [(2, "12-15", 90)]),
+        ("Triceps Pushdown", "Failure", [(4, "10-12", 90)]),
+        ("Overhead Triceps Extension (Cable)", "Failure", [(4, "10-12", 90)]),
     ],
     "Day 3 - Legs": [
-        ("Hack Squat (Machine)", "1-2 RIR", [(3, "6-10", 210)]),
+        ("Hack Squat (Machine)", "1-2 RIR", [(3, "6-10", 210)], [8, 4]),
         ("Romanian Deadlift (Barbell)", "1-2 RIR", [(3, "8-10", 180)]),
         ("Leg Press (Machine)", "1 RIR", [(4, "10-12", 120)]),
-        ("Lying Leg Curl (Machine)", "Failure", [(3, "10-12", 75)]),
-        ("Seated Calf Raise", "Failure", [(3, "10-15", 75)]),
+        ("Lying Leg Curl (Machine)", "Failure", [(3, "10-12", 90)]),
+        ("Standing Calf Raise", "Failure", [(3, "10-15", 90)]),
     ],
     "Day 4 - Arms Finisher + Chest Maintenance": [
-        ("Incline Chest Press (Machine)", "1-2 RIR", [(3, "8-12", 120)]),
-        ("Chest Fly (Machine)", "Failure", [(2, "12-15", 75)]),
-        ("Bicep Curl (Barbell)", "Failure", [(4, "8-12", 75)]),
-        ("Seated Incline Curl (Dumbbell)", "Failure", [(4, "10-12", 75)]),
-        ("Triceps Dip (Weighted)", "Failure", [(3, "8-12", 75)]),
-        ("Triceps Kickback (Dumbbell)", "Failure", [(2, "12-15", 75)]),
+        ("Incline Chest Press (Machine)", "1-2 RIR", [(3, "8-12", 120)], [8, 4]),
+        ("Chest Fly (Machine)", "Failure", [(2, "12-15", 90)]),
+        ("Bicep Curl (Barbell)", "Failure", [(4, "8-12", 90)]),
+        ("Seated Incline Curl (Dumbbell)", "Failure", [(4, "10-12", 90)]),
+        ("Triceps Dip (Weighted)", "Failure", [(3, "8-12", 90)]),
+        ("Skull Crusher (EZ Bar)", "Failure", [(2, "12-15", 90)]),
     ],
 }
 
@@ -108,11 +108,9 @@ def best_match(name, templates):
     return next(t for t in templates if t["title"] == matched_title)
 
 
-def build_sets(rep_scheme, set_type):
-    """rep_scheme like '8-6' or '10-12' -> use the upper number as target reps."""
-    reps = int(rep_scheme.split("-")[-1])
+def build_sets(reps, set_type):
     return {
-        "type": "normal" if set_type == "normal" else "failure",
+        "type": set_type,  # "warmup", "normal", or "failure"
         "weight_kg": None,
         "reps": reps,
     }
@@ -128,14 +126,16 @@ def main():
 
     for day, exercises in SPLIT.items():
         resolved[day] = []
-        for name, effort, sets_spec in exercises:
+        for entry in exercises:
+            name, effort, sets_spec = entry[0], entry[1], entry[2]
+            warmup_reps = entry[3] if len(entry) > 3 else None
             match = best_match(name, templates)
             if match is None:
                 unresolved.append((day, name))
                 print(f"  [NO MATCH] {name}")
                 continue
             print(f"  {name!r:45s} -> {match['title']!r} (id: {match['id']})")
-            resolved[day].append((match, effort, sets_spec))
+            resolved[day].append((match, effort, sets_spec, warmup_reps))
 
     if unresolved:
         print("\nSome exercises had no confident match in your Hevy library:")
@@ -152,15 +152,26 @@ def main():
 
     for day, exs in resolved.items():
         exercises_payload = []
-        for template, effort, sets_spec in exs:
+        for template, effort, sets_spec, warmup_reps in exs:
             sets_payload = []
             # sets_spec entries share one rest value per exercise in this split,
             # so use the first entry's rest for the exercise-level field.
             exercise_rest = sets_spec[0][2]
+
+            # Ramp-up sets (native Hevy "warmup" type), only on the day's first
+            # heavy compound -- per the evidence-based warm-up rule: a cold
+            # muscle/joint about to hit working weight gets 2 ramp sets
+            # (~50% then ~75-80% of working weight); everything else in the
+            # session skips dedicated warm-up sets.
+            if warmup_reps:
+                for reps in warmup_reps:
+                    sets_payload.append(build_sets(reps, "warmup"))
+
             for count, rep_scheme, rest in sets_spec:
+                reps = int(rep_scheme.split("-")[-1])
                 set_type = "normal" if effort != "Failure" else "failure"
                 for _ in range(count):
-                    sets_payload.append(build_sets(rep_scheme, set_type))
+                    sets_payload.append(build_sets(reps, set_type))
             exercises_payload.append(
                 {
                     "exercise_template_id": template["id"],
@@ -173,7 +184,7 @@ def main():
         payload = {
             "routine": {
                 "title": f"Claude {day}",
-                "notes": "",
+                "notes": "General warm-up: 5-10 min light cardio + dynamic mobility before starting.",
                 "exercises": exercises_payload,
             }
         }

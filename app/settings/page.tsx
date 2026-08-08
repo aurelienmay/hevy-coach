@@ -1,5 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import { getUser, getVolumeTargets } from "@/lib/currentUser";
+import {
+  getUser,
+  getVolumeTargetOverrides,
+  getTrainingProfile,
+  getMusclePriorities,
+} from "@/lib/currentUser";
 import SettingsForm from "@/components/SettingsForm";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +18,15 @@ export default async function SettingsPage({
   const user = await getUser();
   const supabase = await createClient();
 
-  const [{ data }, targets] = await Promise.all([
+  const [{ data }, overrides, profile, priorities] = await Promise.all([
     supabase
       .from("user_settings")
       .select("hevy_api_key, anthropic_api_key")
       .eq("user_id", user.id)
       .maybeSingle(),
-    getVolumeTargets(user.id),
+    getVolumeTargetOverrides(user.id),
+    getTrainingProfile(user.id),
+    getMusclePriorities(user.id),
   ]);
 
   return (
@@ -43,7 +50,9 @@ export default async function SettingsPage({
       <SettingsForm
         initialApiKey={data?.hevy_api_key ?? ""}
         initialAnthropicApiKey={data?.anthropic_api_key ?? ""}
-        initialTargets={targets}
+        initialOverrides={overrides}
+        initialProfile={profile}
+        initialPriorities={priorities}
       />
     </main>
   );

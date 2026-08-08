@@ -4,7 +4,14 @@ import { computePlanVolume } from "@/lib/planVolume";
 import type { Routine, RoutineExercise, RoutineSet } from "@/components/RoutineCard";
 import { fetchAllRoutines, fetchAllWorkouts, type HevyExerciseUpdate, type HevySetUpdate, type HevyWorkout } from "@/lib/hevy";
 import { muscleVolume, startOfWeek, workingSets, workoutsInRange } from "@/lib/workoutStats";
-import { getVolumeTargets, type VolumeTargets } from "@/lib/currentUser";
+import { getVolumeTargets, getTrainingProfile, getMusclePriorities, type VolumeTargets } from "@/lib/currentUser";
+import {
+  GOAL_LABELS,
+  EXPERIENCE_LABELS,
+  MUSCLE_PRIORITY_LABELS,
+  type TrainingProfile,
+  type MusclePriorities,
+} from "@/lib/trainingProfile";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_DRAFT_ROUTINES = 4;
@@ -62,15 +69,19 @@ type WeeklyData = {
   progression: ExerciseProgression[];
   favorites: Routine[];
   targets: VolumeTargets;
+  profile: TrainingProfile;
+  musclePriorities: MusclePriorities;
 };
 
 async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<WeeklyData> {
   const supabase = await createClient();
-  const [allRoutines, workouts, { data: favoriteRows }, targets] = await Promise.all([
+  const [allRoutines, workouts, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
     fetchAllWorkouts(hevyApiKey, new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000).toISOString()),
     supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
     getVolumeTargets(userId),
+    getTrainingProfile(userId),
+    getMusclePriorities(userId),
   ]);
   const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
   const favorites: Routine[] = allRoutines
@@ -117,6 +128,8 @@ async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<Wee
     progression,
     favorites,
     targets,
+    profile,
+    musclePriorities,
   };
 }
 
@@ -176,20 +189,46 @@ const ANTI_HALLUCINATION_PREAMBLE = `Before writing anything, follow these rules
 
 `;
 
+const VOLUME_LANDMARKS_PRINCIPLE = `- Reason about volume using the same landmark framework this app's own computed targets are built from (Israetel et al.'s volume landmarks): MV (Maintenance Volume, the floor needed to hold current size/strength), MEV (Minimum Effective Volume, where growth actually starts), MAV (Maximum Adaptive Volume, the productive sweet-spot range most training should live in), and MRV (Maximum Recoverable Volume, the hard ceiling beyond which extra sets stop adding growth and just add fatigue/injury risk — "junk volume"). More sets is not automatically better: never propose pushing a muscle's volume above its own MRV-derived target-range max just because the client is under target elsewhere or has recovery headroom in general — each muscle's ceiling is independent of every other muscle's, so freeing up capacity by reducing one muscle's volume is never itself a reason to add volume to a different, unrelated muscle.`;
+
+const PERSONALIZATION_PRINCIPLE = `- Tailor advice to the client's stated goal, experience level, and schedule (given below): for a "strength" goal, favor lower rep ranges, heavier loads, and longer inter-set rest in exercise-level guidance; for "hypertrophy", use moderate rep ranges as usual; for "fat_loss" or "general_fitness", keep volume moderate and note that conditioning/diet drive that goal more than raw set count. Calibrate how aggressive volume/load changes are to experience level — smaller, more conservative jumps for beginners, more nuanced adjustments are fine for advanced trainees. Keep any proposed weekly volume realistic for the client's training days/week and session time budget — don't propose more sets than could plausibly fit in the available sessions.
+- Respect any stated per-muscle priorities, using the MV/MEV/MAV/MRV landmarks above: a muscle marked "maintain" should be trained in its MV-MEV window — do not propose adding sets or increasing volume even if it reads under the general landmark range, since the client has deliberately chosen to hold it flat; only flag it if volume has dropped below MV entirely, risking losing size/strength. A muscle marked "focus" should be trained toward its MAV-MRV window — actively look for ways to add volume, frequency, or exercise variety up to (never beyond) its MRV, and prioritize progressive-overload attention on it over non-focus muscles. A muscle marked "ignore" gets no commentary at all — no volume commentary, no target comparison, no proposed edits — the client has explicitly said they don't care about it; it will simply have no target range in the data provided, so treat any exercises for it as out of scope.`;
+
+function buildClientProfileSection(profile: TrainingProfile, musclePriorities: MusclePriorities): string {
+  const lines = [
+    `\n## Client profile`,
+    `- Goal: ${GOAL_LABELS[profile.goal]}`,
+    `- Experience level: ${EXPERIENCE_LABELS[profile.experienceLevel]}`,
+    `- Training days/week: ${profile.daysPerWeek}`,
+    `- Session time budget: ${profile.sessionMinutes} minutes`,
+  ];
+  if (profile.notes.trim()) {
+    lines.push(`- Notes from client (injuries/equipment/preferences): ${profile.notes.trim()}`);
+  }
+  const nonNormal = Object.entries(musclePriorities).filter(([, p]) => p !== "normal");
+  if (nonNormal.length > 0) {
+    lines.push(
+      `- Muscle priorities: ${nonNormal.map(([muscle, p]) => `${muscle}=${MUSCLE_PRIORITY_LABELS[p]}`).join(", ")}`
+    );
+  }
+  return lines.join("\n");
+}
+
 function buildSystemPrompt(): string {
   return `${ANTI_HALLUCINATION_PREAMBLE}You are an evidence-based strength & hypertrophy coach reviewing a client's training week.
 
 Ground every recommendation in established resistance-training science consensus:
 - Progressive overload over time (increasing weight, reps, or sets across sessions for the same exercise) — use the per-exercise weight/reps/RPE trend provided to judge whether load should increase, hold, or (rarely) decrease.
-- Weekly volume landmarks per muscle group (roughly 10-20 working sets/week for major muscle groups, 8-15 for smaller ones, based on dose-response volume research such as Schoenfeld et al.'s meta-analyses and volume-landmark frameworks like Israetel's).
+${VOLUME_LANDMARKS_PRINCIPLE}
 - Training frequency of at least ~2x/week per muscle group for hypertrophy.
 - RPE/RIR-based autoregulation (Helms et al.) to manage fatigue and avoid overreaching — an exercise trending toward high RPE at the same weight/reps is a signal to hold or add recovery, not add more volume.
 - Rest-interval science: roughly 2-3 minutes between sets for compound/multi-joint lifts (to maintain load and total volume across sets), roughly 60-90 seconds for single-joint/isolation accessory work, per rest-interval research (e.g. Schoenfeld & Grgic).
 - Recovery and periodic deloads (roughly every 6-8 weeks of accumulating fatigue).
+${PERSONALIZATION_PRINCIPLE}
 
 Do NOT invent specific fake study citations, authors, or statistics you are not confident about. Refer to general, well-established consensus rather than fabricated sources. Do not give "bro science" advice (e.g. vague folklore about muscle confusion, feeling sore, etc.) — every claim should be traceable to the principles above.
 
-You will be given: this week's actual performed training, the client's intended weekly plan (their favorited/starred routines), the last 4 weeks of volume history per muscle, recent per-exercise progression (weight/reps/RPE trend), the client's current weekly volume-target range per muscle, and the exact structure of the client's favorited routines (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete changes.
+You will be given: the client's profile (goal, experience level, training days/week, session time budget, and any notes), this week's actual performed training, the client's intended weekly plan (their favorited/starred routines), the last 4 weeks of volume history per muscle, recent per-exercise progression (weight/reps/RPE trend), the client's current weekly volume-target range per muscle, and the exact structure of the client's favorited routines (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete changes.
 
 Respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) matching this shape:
 {
@@ -228,7 +267,9 @@ Constraints:
 function buildUserPrompt(data: WeeklyData): string {
   const lines: string[] = [];
 
-  lines.push(`## This week's actual performance (since ${data.weekStart.slice(0, 10)}, week starting Monday)`);
+  lines.push(buildClientProfileSection(data.profile, data.musclePriorities));
+
+  lines.push(`\n## This week's actual performance (since ${data.weekStart.slice(0, 10)}, week starting Monday)`);
   if (data.sessionsThisWeek.length === 0) {
     lines.push("No sessions logged yet this week.");
   } else {
@@ -412,14 +453,18 @@ type RoutinePlanData = {
   favorites: Routine[];
   planVolume: { muscle: string; sets: number }[];
   targets: VolumeTargets;
+  profile: TrainingProfile;
+  musclePriorities: MusclePriorities;
 };
 
 async function gatherRoutinePlanData(userId: string, hevyApiKey: string): Promise<RoutinePlanData> {
   const supabase = await createClient();
-  const [allRoutines, { data: favoriteRows }, targets] = await Promise.all([
+  const [allRoutines, { data: favoriteRows }, targets, profile, musclePriorities] = await Promise.all([
     fetchAllRoutines(hevyApiKey),
     supabase.from("favorite_routines").select("routine_id").eq("user_id", userId),
     getVolumeTargets(userId),
+    getTrainingProfile(userId),
+    getMusclePriorities(userId),
   ]);
   const favoriteIds = new Set((favoriteRows ?? []).map((r) => r.routine_id));
   const favorites: Routine[] = allRoutines
@@ -427,21 +472,22 @@ async function gatherRoutinePlanData(userId: string, hevyApiKey: string): Promis
     .map((r) => ({ ...r, is_favorite: true }))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-  return { favorites, planVolume: computePlanVolume(favorites), targets };
+  return { favorites, planVolume: computePlanVolume(favorites), targets, profile, musclePriorities };
 }
 
 function buildRoutinePlanSystemPrompt(): string {
   return `${ANTI_HALLUCINATION_PREAMBLE}You are an evidence-based strength & hypertrophy coach reviewing the DESIGN of a client's favorited/starred weekly routines — not their actual training performance. You are NOT given any session logs, workout history, or adherence data, so never comment on adherence, consistency, or what the client "actually did" this week — only on whether the program AS WRITTEN is well-designed.
 
 Ground every recommendation in established resistance-training program-design consensus:
-- Weekly volume landmarks per muscle group (roughly 10-20 working sets/week for major muscle groups, 8-15 for smaller ones, based on dose-response volume research such as Schoenfeld et al.'s meta-analyses and volume-landmark frameworks like Israetel's) — evaluate the planned weekly volume per muscle (summed across all favorited routines) against the client's target ranges.
+${VOLUME_LANDMARKS_PRINCIPLE} Evaluate the planned weekly volume per muscle (summed across all favorited routines) against the client's target ranges through that same lens.
 - Training frequency of at least ~2x/week per muscle group for hypertrophy — check whether the favorited routines, taken together, hit each major muscle group often enough.
 - Set/rest structure: roughly 2-3 minutes rest for compound/multi-joint lifts, roughly 60-90 seconds for single-joint/isolation accessory work (Schoenfeld & Grgic).
 - Balanced exercise selection (e.g. push/pull balance, no single muscle group left with zero direct or indirect volume across the whole plan).
+${PERSONALIZATION_PRINCIPLE}
 
 Do NOT invent specific fake study citations, authors, or statistics you are not confident about. Refer to general, well-established consensus rather than fabricated sources. Do not give "bro science" advice.
 
-You will be given: the client's current weekly volume-target range per muscle, the combined planned weekly volume per muscle across all favorited routines, and the exact structure of each favorited routine (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete structural changes.
+You will be given: the client's profile (goal, experience level, training days/week, session time budget, and any notes), their current weekly volume-target range per muscle, the combined planned weekly volume per muscle across all favorited routines, and the exact structure of each favorited routine (with exercise indices, current working-set counts, weights, and rest periods) so you can propose concrete structural changes.
 
 Respond with ONLY a single JSON object (no markdown fences, no prose outside the JSON) matching this shape:
 {
@@ -480,7 +526,9 @@ Constraints:
 function buildRoutinePlanUserPrompt(data: RoutinePlanData): string {
   const lines: string[] = [];
 
-  lines.push(`## Combined planned weekly volume (from favorited/starred routines) per muscle vs. target`);
+  lines.push(buildClientProfileSection(data.profile, data.musclePriorities));
+
+  lines.push(`\n## Combined planned weekly volume (from favorited/starred routines) per muscle vs. target`);
   const planByMuscle = new Map(data.planVolume.map((v) => [v.muscle, v.sets]));
   const allMuscles = Array.from(new Set([...Object.keys(data.targets), ...planByMuscle.keys()]));
   for (const muscle of allMuscles) {

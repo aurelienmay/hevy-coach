@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { requireCoachApiKeys } from "@/lib/currentUser";
+import { requireCoachApiKeys, getTrainingProfile } from "@/lib/currentUser";
+import { GOAL_LABELS, EXPERIENCE_LABELS } from "@/lib/trainingProfile";
 import CoachPanel from "@/components/CoachPanel";
 import type { ProposedEdit, ProposedTargetEdit } from "@/lib/coach";
 
@@ -27,16 +29,21 @@ async function getPastReviews(): Promise<CoachReview[]> {
 }
 
 export default async function CoachPage() {
-  await requireCoachApiKeys();
-  const reviews = await getPastReviews();
+  const { userId } = await requireCoachApiKeys();
+  const [reviews, profile] = await Promise.all([getPastReviews(), getTrainingProfile(userId)]);
 
   return (
     <main>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>AI Coach</h1>
-      <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "#888", fontSize: 13, marginBottom: 8 }}>
         Generates a weekly review of your training, or a design-only review of your favorited routines,
         based on established training-science principles (progressive overload, volume landmarks, RPE
         autoregulation) — not gym folklore.
+      </p>
+      <p style={{ color: "#666", fontSize: 12, marginBottom: 20 }}>
+        Personalizing for: {GOAL_LABELS[profile.goal]} · {EXPERIENCE_LABELS[profile.experienceLevel]} ·{" "}
+        {profile.daysPerWeek}x/week · {profile.sessionMinutes} min sessions —{" "}
+        <Link href="/settings" style={{ color: "#4f8ef7" }}>edit in Settings</Link>
       </p>
 
       <CoachPanel initialReviews={reviews} />
