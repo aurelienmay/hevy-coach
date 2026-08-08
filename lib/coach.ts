@@ -12,6 +12,16 @@ import {
   type TrainingProfile,
   type MusclePriorities,
 } from "@/lib/trainingProfile";
+import {
+  REST_GUIDANCE,
+  FREQUENCY_GUIDANCE,
+  EFFORT_GUIDANCE,
+  SET_CAP_GUIDANCE,
+  WARMUP_GUIDANCE,
+  EXERCISE_SELECTION_CRITERIA,
+  NOT_YET_AUDITED_EXERCISE_SELECTION,
+  UNESTABLISHED_MUSCLES,
+} from "@/lib/trainingReference";
 import { createClient } from "@/lib/supabase/server";
 
 const MAX_DRAFT_ROUTINES = 4;
@@ -65,7 +75,7 @@ type WeeklyData = {
   currentWeekVolume: { muscle: string; sets: number }[];
   planVolume: { muscle: string; sets: number }[];
   priorWeeksVolume: { weekStart: string; muscle: string; sets: number }[];
-  sessionsThisWeek: { title: string; start_time: string; workingSets: number; totalSets: number }[];
+  sessionsThisWeek: { title: string; start_time: string; workingSets: number; totalSets: number; muscles: { muscle: string; sets: number }[] }[];
   progression: ExerciseProgression[];
   favorites: Routine[];
   targets: VolumeTargets;
@@ -111,6 +121,9 @@ async function gatherWeeklyData(userId: string, hevyApiKey: string): Promise<Wee
       start_time: w.start_time,
       workingSets: workingSets(w).length,
       totalSets: w.exercises.reduce((sum, ex) => sum + ex.sets.length, 0),
+      // Per-session breakdown (not just weekly totals) is what makes the
+      // 48-72h same-muscle spacing rule actually checkable by the coach.
+      muscles: muscleVolume([w], EXCLUDED_MUSCLES),
     }));
 
   const exerciseIds = Array.from(
@@ -189,10 +202,20 @@ const ANTI_HALLUCINATION_PREAMBLE = `Before writing anything, follow these rules
 
 `;
 
-const VOLUME_LANDMARKS_PRINCIPLE = `- Reason about volume using the same landmark framework this app's own computed targets are built from (Israetel et al.'s volume landmarks): MV (Maintenance Volume, the floor needed to hold current size/strength), MEV (Minimum Effective Volume, where growth actually starts), MAV (Maximum Adaptive Volume, the productive sweet-spot range most training should live in), and MRV (Maximum Recoverable Volume, the hard ceiling beyond which extra sets stop adding growth and just add fatigue/injury risk — "junk volume"). More sets is not automatically better: never propose pushing a muscle's volume above its own MRV-derived target-range max just because the client is under target elsewhere or has recovery headroom in general — each muscle's ceiling is independent of every other muscle's, so freeing up capacity by reducing one muscle's volume is never itself a reason to add volume to a different, unrelated muscle.`;
+const VOLUME_LANDMARKS_PRINCIPLE = `- Reason about weekly volume per muscle using the MEV-to-MAV dose-response framework [Framework: Israetel/RP synthesis of Schoenfeld dose-response data] this app's own computed targets are built from: a target range's min is MEV (Minimum Effective Volume, where growth actually starts) and its max is the top of MAV (Maximum Adaptive Volume, the productive ceiling before diminishing returns get steep). More sets is not automatically better: never propose pushing a muscle's volume above its own target-range max just because the client is under target elsewhere or has recovery headroom in general — each muscle's range is independent of every other muscle's, so freeing up capacity by reducing one muscle's volume is never itself a reason to add volume to a different, unrelated muscle. These muscles have NO established weekly-volume landmark in the reference this app uses [Not established]: ${UNESTABLISHED_MUSCLES.join(", ")} — their shown target ranges are provisional working numbers only; never present them as settled science, and say so plainly if you comment on them at all.`;
+
+const REST_EFFORT_PRINCIPLE = `- Rest & effort: ${REST_GUIDANCE.compound.seconds / 60} minutes rest (up to 3-4 min on the heaviest sets) for compound/multi-joint lifts, trained around ${EFFORT_GUIDANCE.compound.rir} RIR rather than to failure — training to failure produces near-identical hypertrophy but meaningfully more fatigue on lifts that already carry the highest per-set fatigue cost [${REST_GUIDANCE.compound.tier}/${EFFORT_GUIDANCE.compound.tier}]. Isolation/machine work gets a flat ${REST_GUIDANCE.isolation.seconds}-second rest [${REST_GUIDANCE.isolation.tier}], and going to failure (0 RIR) on the last set(s) there is fine since its systemic fatigue cost is lower [${EFFORT_GUIDANCE.isolation.tier}]. Use the provided per-exercise average-RPE trend to judge whether effort is in the right zone — a compound consistently trending to true failure (RPE 10) is a signal to pull back, not push harder.`;
+
+const FREQUENCY_PRINCIPLE = `- Frequency: leave at least ${FREQUENCY_GUIDANCE.minHoursSameMuscle}-${FREQUENCY_GUIDANCE.maxHoursSameMuscle} hours between sessions that train the same muscle meaningfully hard [${FREQUENCY_GUIDANCE.tier}] — use the per-session muscle breakdown provided below to check for spacing violations, and say so plainly if the data doesn't let you verify it rather than guessing. Training a muscle ${FREQUENCY_GUIDANCE.sweetSpotPerWeek}x/week reliably beats 1x/week at equal weekly volume, but there is no clear added benefit from going higher than ${FREQUENCY_GUIDANCE.sweetSpotPerWeek}x/week once volume is held equal [Meta: Schoenfeld et al. frequency meta-analysis] — never recommend higher frequency as an end in itself.`;
+
+const SET_CAP_PRINCIPLE = `- Per-exercise set cap within a single session: at most ${SET_CAP_GUIDANCE.compound} working sets on a compound/multi-joint lift, at most ${SET_CAP_GUIDANCE.isolation} on an isolation/single-joint lift, never ${SET_CAP_GUIDANCE.hardMax} on anything [${SET_CAP_GUIDANCE.tier}]. Past ${SET_CAP_GUIDANCE.isolation} sets on one movement, recommend a different exercise for the same muscle rather than another set of the same one — exercise variation drives more complete regional hypertrophy than piling extra sets onto one movement [Meta: Fonseca et al. 2014].`;
+
+const WARMUP_PRINCIPLE = `- Warm-up: ${WARMUP_GUIDANCE.general.text} [${WARMUP_GUIDANCE.general.tier}] is standard readiness practice, not a proven performance edge. Before the first heavy compound of a session only, ${WARMUP_GUIDANCE.specificRampUp.text} — this measurably improves subsequent working-set performance [${WARMUP_GUIDANCE.specificRampUp.tier}]. Otherwise, ${WARMUP_GUIDANCE.skipWhen.text} [${WARMUP_GUIDANCE.skipWhen.tier}].`;
+
+const EXERCISE_SELECTION_PRINCIPLE = `- When critiquing exercise selection, apply these criteria: ${EXERCISE_SELECTION_CRITERIA.map((c, i) => `(${i + 1}) ${c.rule} [${c.tier}]`).join(" ")} These criteria have NOT yet been reviewed for: ${NOT_YET_AUDITED_EXERCISE_SELECTION.join("; ")} — for those muscle groups, apply the general criteria above only; do not invent a specific exercise-vs-exercise tier list or claim one movement beats another there.`;
 
 const PERSONALIZATION_PRINCIPLE = `- Tailor advice to the client's stated goal, experience level, and schedule (given below): for a "strength" goal, favor lower rep ranges, heavier loads, and longer inter-set rest in exercise-level guidance; for "hypertrophy", use moderate rep ranges as usual; for "fat_loss" or "general_fitness", keep volume moderate and note that conditioning/diet drive that goal more than raw set count. Calibrate how aggressive volume/load changes are to experience level — smaller, more conservative jumps for beginners, more nuanced adjustments are fine for advanced trainees. Keep any proposed weekly volume realistic for the client's training days/week and session time budget — don't propose more sets than could plausibly fit in the available sessions.
-- Respect any stated per-muscle priorities, using the MV/MEV/MAV/MRV landmarks above: a muscle marked "maintain" should be trained in its MV-MEV window — do not propose adding sets or increasing volume even if it reads under the general landmark range, since the client has deliberately chosen to hold it flat; only flag it if volume has dropped below MV entirely, risking losing size/strength. A muscle marked "focus" should be trained toward its MAV-MRV window — actively look for ways to add volume, frequency, or exercise variety up to (never beyond) its MRV, and prioritize progressive-overload attention on it over non-focus muscles. A muscle marked "ignore" gets no commentary at all — no volume commentary, no target comparison, no proposed edits — the client has explicitly said they don't care about it; it will simply have no target range in the data provided, so treat any exercises for it as out of scope.`;
+- Respect any stated per-muscle priorities: a muscle marked "maintain" is deliberately trained below its normal growth-effective range — do not propose adding sets or increasing volume even if it reads under the general landmark range, since the client has chosen to hold it flat; only flag it if volume has dropped so low the muscle risks losing size/strength entirely. A muscle marked "focus" is deliberately trained toward the top of its target range — actively look for ways to add volume, frequency, or exercise variety up to (never beyond) its target-range max, and prioritize progressive-overload attention on it over non-focus muscles. A muscle marked "ignore" gets no commentary at all — no volume commentary, no target comparison, no proposed edits — the client has explicitly said they don't care about it; it will simply have no target range in the data provided, so treat any exercises for it as out of scope.`;
 
 function buildClientProfileSection(profile: TrainingProfile, musclePriorities: MusclePriorities): string {
   const lines = [
@@ -220,9 +243,9 @@ function buildSystemPrompt(): string {
 Ground every recommendation in established resistance-training science consensus:
 - Progressive overload over time (increasing weight, reps, or sets across sessions for the same exercise) — use the per-exercise weight/reps/RPE trend provided to judge whether load should increase, hold, or (rarely) decrease.
 ${VOLUME_LANDMARKS_PRINCIPLE}
-- Training frequency of at least ~2x/week per muscle group for hypertrophy.
-- RPE/RIR-based autoregulation (Helms et al.) to manage fatigue and avoid overreaching — an exercise trending toward high RPE at the same weight/reps is a signal to hold or add recovery, not add more volume.
-- Rest-interval science: roughly 2-3 minutes between sets for compound/multi-joint lifts (to maintain load and total volume across sets), roughly 60-90 seconds for single-joint/isolation accessory work, per rest-interval research (e.g. Schoenfeld & Grgic).
+${FREQUENCY_PRINCIPLE}
+${REST_EFFORT_PRINCIPLE}
+${SET_CAP_PRINCIPLE}
 - Recovery and periodic deloads (roughly every 6-8 weeks of accumulating fatigue).
 ${PERSONALIZATION_PRINCIPLE}
 
@@ -274,7 +297,10 @@ function buildUserPrompt(data: WeeklyData): string {
     lines.push("No sessions logged yet this week.");
   } else {
     for (const s of data.sessionsThisWeek) {
-      lines.push(`- ${s.start_time.slice(0, 10)}: "${s.title}" — ${s.workingSets} working sets (${s.totalSets} total incl. warmups)`);
+      const musclesStr = s.muscles.map((m) => `${m.muscle}=${m.sets}`).join(", ") || "none";
+      lines.push(
+        `- ${s.start_time.slice(0, 10)}: "${s.title}" — ${s.workingSets} working sets (${s.totalSets} total incl. warmups); per-muscle sets: ${musclesStr}`
+      );
     }
   }
 
@@ -480,9 +506,12 @@ function buildRoutinePlanSystemPrompt(): string {
 
 Ground every recommendation in established resistance-training program-design consensus:
 ${VOLUME_LANDMARKS_PRINCIPLE} Evaluate the planned weekly volume per muscle (summed across all favorited routines) against the client's target ranges through that same lens.
-- Training frequency of at least ~2x/week per muscle group for hypertrophy — check whether the favorited routines, taken together, hit each major muscle group often enough.
-- Set/rest structure: roughly 2-3 minutes rest for compound/multi-joint lifts, roughly 60-90 seconds for single-joint/isolation accessory work (Schoenfeld & Grgic).
+- Frequency: training a muscle ${FREQUENCY_GUIDANCE.sweetSpotPerWeek}x/week reliably beats 1x/week at equal weekly volume, with no clear added benefit beyond ${FREQUENCY_GUIDANCE.sweetSpotPerWeek}x/week once volume is held equal [Meta: Schoenfeld et al. frequency meta-analysis] — check whether the favorited routines, taken together, hit each major muscle group often enough. No session-log data is provided here, so reason from the routines' structure only; the same-muscle spacing rule (${FREQUENCY_GUIDANCE.minHoursSameMuscle}-${FREQUENCY_GUIDANCE.maxHoursSameMuscle}h) can't be checked without actual session dates.
+${REST_EFFORT_PRINCIPLE}
+${SET_CAP_PRINCIPLE}
+${WARMUP_PRINCIPLE}
 - Balanced exercise selection (e.g. push/pull balance, no single muscle group left with zero direct or indirect volume across the whole plan).
+${EXERCISE_SELECTION_PRINCIPLE}
 ${PERSONALIZATION_PRINCIPLE}
 
 Do NOT invent specific fake study citations, authors, or statistics you are not confident about. Refer to general, well-established consensus rather than fabricated sources. Do not give "bro science" advice.
