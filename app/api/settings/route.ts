@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isVolumeTargets, isTrainingProfile, isMusclePriorities, isNormalTrainingWeek, isScheduleExceptions } from "@/lib/validation";
 import { isCoachModelTier } from "@/lib/coachModel";
+import { encryptSecret } from "@/lib/secretCrypto";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -63,10 +64,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "coach_model must be 'haiku', 'sonnet', or 'opus'" }, { status: 400 });
   }
 
+  const encryptedHevyKey = encryptSecret(hevy_api_key);
+  const encryptedAnthropicKey =
+    typeof anthropic_api_key === "string" && anthropic_api_key.trim() ? encryptSecret(anthropic_api_key) : anthropic_api_key;
+
   const { error } = await supabase.from("user_settings").upsert({
     user_id: user.id,
-    hevy_api_key,
-    anthropic_api_key,
+    hevy_api_key: encryptedHevyKey,
+    anthropic_api_key: encryptedAnthropicKey,
     volume_targets,
     training_profile,
     muscle_priorities,

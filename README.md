@@ -11,6 +11,7 @@ excluded) — which is the piece Hevy's own stats don't give you.
 - `lib/workoutStats.ts` — shared helpers for deriving weekly/muscle-volume stats from live workout data
 - `lib/muscleMap.ts` — exercise → muscle group mapping (extend it as you add new exercises)
 - `lib/currentUser.ts` — per-request helpers: the signed-in user, their saved Hevy API key (redirects to `/settings` if missing), their volume targets
+- `lib/secretCrypto.ts` — AES-256-GCM encrypt/decrypt for the two stored API keys (see the Notes section below)
 - `lib/supabase/` — Supabase client factories (`server.ts` for Server Components/Route Handlers, `client.ts` for client components)
 - `app/login`, `app/signup`, `app/auth/callback` — email/password auth via Supabase Auth (self-signup is open)
 - `app/settings/page.tsx` — per-user Hevy API key, Anthropic API key, and weekly volume targets per muscle group
@@ -34,8 +35,11 @@ excluded) — which is the piece Hevy's own stats don't give you.
 ```
 cp .env.example .env.local
 # fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+# generate SETTINGS_ENCRYPTION_KEY:
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 npm install
 ```
+`SETTINGS_ENCRYPTION_KEY` encrypts the stored Hevy/Anthropic API keys at rest — keep it secret and never prefix it `NEXT_PUBLIC_`. Losing or rotating it makes existing stored keys undecryptable (affected users just get redirected back to `/settings` to re-enter theirs).
 
 ### 3. Run locally to check it
 ```
@@ -49,12 +53,12 @@ the AI Coach page. Both keys are per-user, not app-wide — everyone who signs u
 ### 4. Deploy to Vercel
 1. Push this folder to a GitHub repo.
 2. Import the repo in Vercel.
-3. Add the same env vars from `.env.local` in the Vercel project settings.
+3. Add the same env vars from `.env.local` in the Vercel project settings, including `SETTINGS_ENCRYPTION_KEY`.
 4. Deploy, then update the Supabase Site URL (step 1.4 above) to the deployed URL.
 
 ## Notes / things to know
 
-- **Each user's Hevy and Anthropic API keys are stored in plain text**, protected only by Row Level Security (only that user's own authenticated requests can read their row). These are real credentials — treat the Supabase project accordingly. No app-level encryption yet.
+- **Each user's Hevy and Anthropic API keys are encrypted at rest** (AES-256-GCM, `lib/secretCrypto.ts`) with a server-only `SETTINGS_ENCRYPTION_KEY`, on top of Row Level Security (only that user's own authenticated requests can read their row). This protects against someone who only gets database/backup-level access (a leaked Supabase service-role key, a stolen backup, dashboard access without app-deploy access) — it does **not** protect against the deployed app's own server code, which still decrypts a key in memory each time it calls Hevy/Anthropic on the user's behalf; there's no architecture where a trusted server calls a third-party API on your behalf without ever holding the key. Rows written before this shipped are read as legacy plaintext and self-heal to ciphertext the next time that user opens `/settings` and hits Save (even untouched) — if you want everything encrypted immediately, ask each existing user to do that once.
 - **Signup is open** — anyone can create an account and add their own Hevy API key. There's no invite/allowlist gate.
 - **Every page load hits the Hevy API directly** — no background sync to keep fresh, but pages will be a bit slower than a DB-backed read, and the Sessions page only looks back to the start of last month by design.
 - **Extending `muscleMap.ts`:** if you add a new exercise to a Hevy routine that isn't in the map, it'll fall back to `"other"` and get excluded from the muscle charts — add it to the map when that happens.

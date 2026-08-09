@@ -9,6 +9,21 @@ import {
   getCoachModel,
 } from "@/lib/currentUser";
 import SettingsForm from "@/components/SettingsForm";
+import { decryptSecret, SecretDecryptionError } from "@/lib/secretCrypto";
+
+// Falls back to an empty field on a real decrypt failure (wrong/rotated key,
+// corrupted data) rather than crashing -- this page is where the user goes
+// to fix a bad key, so it must never dead-end them. A misconfigured
+// SETTINGS_ENCRYPTION_KEY (a non-SecretDecryptionError) still throws.
+function decryptOrEmpty(value: string | null | undefined): string {
+  if (!value) return "";
+  try {
+    return decryptSecret(value);
+  } catch (err) {
+    if (err instanceof SecretDecryptionError) return "";
+    throw err;
+  }
+}
 
 export const dynamic = "force-dynamic";
 
@@ -55,8 +70,8 @@ export default async function SettingsPage({
       )}
 
       <SettingsForm
-        initialApiKey={data?.hevy_api_key ?? ""}
-        initialAnthropicApiKey={data?.anthropic_api_key ?? ""}
+        initialApiKey={decryptOrEmpty(data?.hevy_api_key)}
+        initialAnthropicApiKey={decryptOrEmpty(data?.anthropic_api_key)}
         initialOverrides={overrides}
         initialProfile={profile}
         initialPriorities={priorities}

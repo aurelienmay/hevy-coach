@@ -5,6 +5,7 @@ import { defaultVolumeTargetsFor } from "@/lib/volumeTargets";
 import { DEFAULT_TRAINING_PROFILE, type TrainingProfile, type MusclePriorities } from "@/lib/trainingProfile";
 import { DEFAULT_NORMAL_TRAINING_WEEK, type NormalTrainingWeek, type ScheduleException } from "@/lib/schedule";
 import { DEFAULT_COACH_MODEL, isCoachModelTier, type CoachModelTier } from "@/lib/coachModel";
+import { decryptSecret, SecretDecryptionError } from "@/lib/secretCrypto";
 
 // Middleware already contacts the Supabase Auth server to verify the JWT and
 // guarantees a signed-in user for every non-public route -- it forwards the
@@ -38,7 +39,15 @@ export async function requireHevyApiKey(): Promise<{ userId: string; apiKey: str
     redirect("/settings?needsKey=1");
   }
 
-  return { userId: user.id, apiKey: data.hevy_api_key };
+  let apiKey: string;
+  try {
+    apiKey = decryptSecret(data.hevy_api_key);
+  } catch (err) {
+    if (err instanceof SecretDecryptionError) redirect("/settings?needsKey=1");
+    throw err;
+  }
+
+  return { userId: user.id, apiKey };
 }
 
 // The AI Coach needs both keys: Hevy to read/write training data, Anthropic
@@ -60,7 +69,23 @@ export async function requireCoachApiKeys(): Promise<{ userId: string; hevyApiKe
     redirect("/settings?needsAnthropicKey=1");
   }
 
-  return { userId: user.id, hevyApiKey: data.hevy_api_key, anthropicApiKey: data.anthropic_api_key };
+  let hevyApiKey: string;
+  try {
+    hevyApiKey = decryptSecret(data.hevy_api_key);
+  } catch (err) {
+    if (err instanceof SecretDecryptionError) redirect("/settings?needsKey=1");
+    throw err;
+  }
+
+  let anthropicApiKey: string;
+  try {
+    anthropicApiKey = decryptSecret(data.anthropic_api_key);
+  } catch (err) {
+    if (err instanceof SecretDecryptionError) redirect("/settings?needsAnthropicKey=1");
+    throw err;
+  }
+
+  return { userId: user.id, hevyApiKey, anthropicApiKey };
 }
 
 export type VolumeTargets = Record<string, { min: number; max: number }>;
