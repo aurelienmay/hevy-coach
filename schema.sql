@@ -20,6 +20,7 @@ create table user_settings (
   muscle_priorities jsonb,     -- null = all "normal"; else {muscle: "maintain" | "normal" | "focus" | "ignore"}
   normal_training_week jsonb,  -- null = defaults to Mon-Sat; else array of weekday indices (0=Sun..6=Sat) normally trained
   schedule_exceptions jsonb,   -- null = none; else array of {id, startDate, endDate, note} one-off unavailable date ranges
+  coach_model text,           -- null = defaults to 'sonnet'; else 'haiku' | 'sonnet' | 'opus' -- which Claude tier powers this user's AI Coach calls
   updated_at timestamptz not null default now()
 );
 
@@ -29,6 +30,7 @@ create table user_settings (
 --   alter table user_settings add column if not exists muscle_priorities jsonb;
 --   alter table user_settings add column if not exists normal_training_week jsonb;
 --   alter table user_settings add column if not exists schedule_exceptions jsonb;
+--   alter table user_settings add column if not exists coach_model text;
 --   alter table coach_reviews add column if not exists week_plan jsonb not null default '[]';
 --   alter table coach_reviews drop constraint if exists coach_reviews_review_type_check;
 --   alter table coach_reviews add constraint coach_reviews_review_type_check

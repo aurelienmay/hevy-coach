@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isVolumeTargets, isTrainingProfile, isMusclePriorities, isNormalTrainingWeek, isScheduleExceptions } from "@/lib/validation";
+import { isCoachModelTier } from "@/lib/coachModel";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -19,6 +20,7 @@ export async function POST(req: NextRequest) {
     muscle_priorities?: unknown;
     normal_training_week?: unknown;
     schedule_exceptions?: unknown;
+    coach_model?: unknown;
   };
   try {
     body = await req.json();
@@ -33,6 +35,7 @@ export async function POST(req: NextRequest) {
     muscle_priorities,
     normal_training_week,
     schedule_exceptions,
+    coach_model,
   } = body;
 
   if (typeof hevy_api_key !== "string" || !hevy_api_key.trim()) {
@@ -56,6 +59,9 @@ export async function POST(req: NextRequest) {
   if (schedule_exceptions != null && !isScheduleExceptions(schedule_exceptions)) {
     return NextResponse.json({ error: "schedule_exceptions must be an array of {id, startDate, endDate, note}" }, { status: 400 });
   }
+  if (coach_model != null && !isCoachModelTier(coach_model)) {
+    return NextResponse.json({ error: "coach_model must be 'haiku', 'sonnet', or 'opus'" }, { status: 400 });
+  }
 
   const { error } = await supabase.from("user_settings").upsert({
     user_id: user.id,
@@ -66,6 +72,7 @@ export async function POST(req: NextRequest) {
     muscle_priorities,
     normal_training_week,
     schedule_exceptions,
+    coach_model,
     updated_at: new Date().toISOString(),
   });
 

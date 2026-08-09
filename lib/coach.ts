@@ -10,8 +10,10 @@ import {
   getMusclePriorities,
   getNormalTrainingWeek,
   getScheduleExceptions,
+  getCoachModel,
   type VolumeTargets,
 } from "@/lib/currentUser";
+import { resolveCoachModel } from "@/lib/coachModel";
 import {
   GOAL_LABELS,
   EXPERIENCE_LABELS,
@@ -402,7 +404,13 @@ function parseReviewJson(text: string): { review: string; proposedEdits: RawProp
   };
 }
 
-async function callCoachModel(systemPrompt: string, userPrompt: string, anthropicApiKey: string): Promise<string> {
+async function callCoachModel(
+  systemPrompt: string,
+  userPrompt: string,
+  anthropicApiKey: string,
+  model: string,
+  effort?: "low" | "medium" | "high"
+): Promise<string> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -411,10 +419,11 @@ async function callCoachModel(systemPrompt: string, userPrompt: string, anthropi
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "claude-haiku-4-5",
+      model,
       max_tokens: 8192,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
+      ...(effort ? { output_config: { effort } } : {}),
     }),
   });
 
@@ -490,8 +499,9 @@ export async function generateWeeklyReview(
   hevyApiKey: string,
   anthropicApiKey: string
 ): Promise<{ review: string; proposedEdits: ProposedEdit[]; proposedTargetEdits: ProposedTargetEdit[] }> {
-  const data = await gatherWeeklyData(userId, hevyApiKey);
-  const text = await callCoachModel(buildSystemPrompt(), buildUserPrompt(data), anthropicApiKey);
+  const [data, coachModel] = await Promise.all([gatherWeeklyData(userId, hevyApiKey), getCoachModel(userId)]);
+  const { modelId, effort } = resolveCoachModel(coachModel);
+  const text = await callCoachModel(buildSystemPrompt(), buildUserPrompt(data), anthropicApiKey, modelId, effort);
   const parsed = parseReviewJson(text);
   const { proposedEdits, proposedTargetEdits } = buildProposals(parsed, data.favorites, data.targets);
   return { review: parsed.review, proposedEdits, proposedTargetEdits };
@@ -611,8 +621,15 @@ export async function generateRoutinePlanReview(
   hevyApiKey: string,
   anthropicApiKey: string
 ): Promise<{ review: string; proposedEdits: ProposedEdit[]; proposedTargetEdits: ProposedTargetEdit[] }> {
-  const data = await gatherRoutinePlanData(userId, hevyApiKey);
-  const text = await callCoachModel(buildRoutinePlanSystemPrompt(), buildRoutinePlanUserPrompt(data), anthropicApiKey);
+  const [data, coachModel] = await Promise.all([gatherRoutinePlanData(userId, hevyApiKey), getCoachModel(userId)]);
+  const { modelId, effort } = resolveCoachModel(coachModel);
+  const text = await callCoachModel(
+    buildRoutinePlanSystemPrompt(),
+    buildRoutinePlanUserPrompt(data),
+    anthropicApiKey,
+    modelId,
+    effort
+  );
   const parsed = parseReviewJson(text);
   const { proposedEdits, proposedTargetEdits } = buildProposals(parsed, data.favorites, data.targets);
   return { review: parsed.review, proposedEdits, proposedTargetEdits };
@@ -863,8 +880,18 @@ export async function generateAdaptedWeekPlan(
   anthropicApiKey: string,
   weekStart: Date
 ): Promise<{ summary: string; days: PlannedDay[] }> {
-  const data = await gatherWeekPlanData(userId, hevyApiKey, weekStart);
-  const text = await callCoachModel(buildWeekPlanSystemPrompt(), buildWeekPlanUserPrompt(data), anthropicApiKey);
+  const [data, coachModel] = await Promise.all([
+    gatherWeekPlanData(userId, hevyApiKey, weekStart),
+    getCoachModel(userId),
+  ]);
+  const { modelId, effort } = resolveCoachModel(coachModel);
+  const text = await callCoachModel(
+    buildWeekPlanSystemPrompt(),
+    buildWeekPlanUserPrompt(data),
+    anthropicApiKey,
+    modelId,
+    effort
+  );
   const parsed = parseWeekPlanJson(text);
   const days = buildPlannedDays(parsed, data.pool, data.availability);
   return { summary: parsed.summary, days };

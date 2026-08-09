@@ -6,6 +6,7 @@ import {
   getMusclePriorities,
   getNormalTrainingWeek,
   getScheduleExceptions,
+  getCoachModel,
 } from "@/lib/currentUser";
 import SettingsForm from "@/components/SettingsForm";
 
@@ -20,18 +21,20 @@ export default async function SettingsPage({
   const user = await getUser();
   const supabase = await createClient();
 
-  const [{ data }, overrides, profile, priorities, normalTrainingWeek, scheduleExceptions] = await Promise.all([
-    supabase
-      .from("user_settings")
-      .select("hevy_api_key, anthropic_api_key")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    getVolumeTargetOverrides(user.id),
-    getTrainingProfile(user.id),
-    getMusclePriorities(user.id),
-    getNormalTrainingWeek(user.id),
-    getScheduleExceptions(user.id),
-  ]);
+  const [{ data }, overrides, profile, priorities, normalTrainingWeek, scheduleExceptions, coachModel] =
+    await Promise.all([
+      supabase
+        .from("user_settings")
+        .select("hevy_api_key, anthropic_api_key")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      getVolumeTargetOverrides(user.id),
+      getTrainingProfile(user.id),
+      getMusclePriorities(user.id),
+      getNormalTrainingWeek(user.id),
+      getScheduleExceptions(user.id),
+      getCoachModel(user.id),
+    ]);
 
   return (
     <main>
@@ -59,6 +62,7 @@ export default async function SettingsPage({
         initialPriorities={priorities}
         initialNormalTrainingWeek={normalTrainingWeek}
         initialScheduleExceptions={scheduleExceptions}
+        initialCoachModel={coachModel}
         needsKey={!!needsKey}
         needsAnthropicKey={!!needsAnthropicKey}
       />

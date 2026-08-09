@@ -21,6 +21,13 @@ import {
   type NormalTrainingWeek,
   type ScheduleException,
 } from "@/lib/schedule";
+import {
+  COACH_MODELS,
+  COACH_MODEL_LABELS,
+  COACH_MODEL_DESCRIPTIONS,
+  COACH_MODEL_COST_HINTS,
+  type CoachModelTier,
+} from "@/lib/coachModel";
 
 const MUSCLES = [...ALL_MUSCLES].sort();
 
@@ -51,6 +58,7 @@ export default function SettingsForm({
   initialPriorities,
   initialNormalTrainingWeek,
   initialScheduleExceptions,
+  initialCoachModel,
   needsKey,
   needsAnthropicKey,
 }: {
@@ -61,6 +69,7 @@ export default function SettingsForm({
   initialPriorities: MusclePriorities;
   initialNormalTrainingWeek: NormalTrainingWeek;
   initialScheduleExceptions: ScheduleException[];
+  initialCoachModel: CoachModelTier;
   needsKey?: boolean;
   needsAnthropicKey?: boolean;
 }) {
@@ -76,6 +85,7 @@ export default function SettingsForm({
   const [priorities, setPriorities] = useState<MusclePriorities>(initialPriorities);
   const [normalTrainingWeek, setNormalTrainingWeek] = useState<NormalTrainingWeek>(initialNormalTrainingWeek);
   const [scheduleExceptions, setScheduleExceptions] = useState<ScheduleException[]>(initialScheduleExceptions);
+  const [coachModel, setCoachModel] = useState<CoachModelTier>(initialCoachModel);
   const [newExceptionStart, setNewExceptionStart] = useState("");
   const [newExceptionEnd, setNewExceptionEnd] = useState("");
   const [newExceptionNote, setNewExceptionNote] = useState("");
@@ -166,6 +176,7 @@ export default function SettingsForm({
         muscle_priorities: priorities,
         normal_training_week: normalTrainingWeek,
         schedule_exceptions: scheduleExceptions,
+        coach_model: coachModel,
       }),
     });
 
@@ -236,6 +247,57 @@ export default function SettingsForm({
         console.anthropic.com → API Keys. Only needed for the AI Coach page, and it's your
         own key — usage is billed to your Anthropic account, not shared with other users.
       </p>
+
+      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+        AI Coach model
+      </label>
+      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+        Which Claude model powers your weekly review, routine review, and week-plan adaptation —
+        billed against the Anthropic key above. Sonnet is the recommended default: a stronger
+        balance of reasoning quality, speed, and cost than Haiku. Switch to Haiku for
+        faster/cheaper generations if you don&apos;t mind occasionally weaker adherence to the
+        coach&apos;s own rules, or to Opus for the most capable reasoning at extra latency and
+        cost. Even Opus runs well under a cent per generation at this app&apos;s typical prompt
+        sizes.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+        {COACH_MODELS.map((tier) => {
+          const active = coachModel === tier;
+          return (
+            <label
+              key={tier}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
+                padding: "10px 12px",
+                borderRadius: 6,
+                border: active ? "1px solid #4f8ef7" : "1px solid #333",
+                background: active ? "#1c3157" : "#14171b",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="radio"
+                  name="coach_model"
+                  value={tier}
+                  checked={active}
+                  onChange={() => {
+                    setCoachModel(tier);
+                    setSaved(false);
+                  }}
+                />
+                <span style={{ fontSize: 14, color: "#e6e6e6" }}>{COACH_MODEL_LABELS[tier]}</span>
+                <span style={{ fontSize: 11, color: "#666" }}>{COACH_MODEL_COST_HINTS[tier]}</span>
+              </span>
+              <span style={{ fontSize: 12, color: "#888", marginLeft: 24 }}>
+                {COACH_MODEL_DESCRIPTIONS[tier]}
+              </span>
+            </label>
+          );
+        })}
+      </div>
       </div>
 
       <div style={{ display: tab === "profile" ? "block" : "none" }}>

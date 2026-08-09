@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { defaultVolumeTargetsFor } from "@/lib/volumeTargets";
 import { DEFAULT_TRAINING_PROFILE, type TrainingProfile, type MusclePriorities } from "@/lib/trainingProfile";
 import { DEFAULT_NORMAL_TRAINING_WEEK, type NormalTrainingWeek, type ScheduleException } from "@/lib/schedule";
+import { DEFAULT_COACH_MODEL, isCoachModelTier, type CoachModelTier } from "@/lib/coachModel";
 
 // Middleware already contacts the Supabase Auth server to verify the JWT and
 // guarantees a signed-in user for every non-public route -- it forwards the
@@ -90,6 +91,20 @@ export async function getMusclePriorities(userId: string): Promise<MusclePriorit
     .maybeSingle();
 
   return (data?.muscle_priorities as MusclePriorities | null) ?? {};
+}
+
+// Which Claude tier powers this user's AI Coach calls -- defaults to the
+// app's recommended balance (Sonnet) when unset or an unrecognized value
+// somehow ended up stored.
+export async function getCoachModel(userId: string): Promise<CoachModelTier> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("user_settings")
+    .select("coach_model")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return isCoachModelTier(data?.coach_model) ? data.coach_model : DEFAULT_COACH_MODEL;
 }
 
 // Merges a saved normal-training-week pattern over the app default (Mon-Sat).
