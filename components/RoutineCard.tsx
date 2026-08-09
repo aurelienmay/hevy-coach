@@ -144,7 +144,8 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
 
   // Marks a routine as tagged into the "compare plan" set shown alongside
   // the current plan for a volume comparison -- same toggle mechanic again,
-  // a fully independent tag. See components/RoutineComparison.tsx.
+  // a fully independent tag. See components/PlanComparisonChart.tsx and
+  // app/routines/page.tsx.
   const compareButton = (
     <button
       onClick={toggleCompare}
