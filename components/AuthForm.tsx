@@ -23,6 +23,25 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmSent, setConfirmSent] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
+
+  async function onForgotPassword() {
+    if (!email) {
+      setError("Enter your email above first.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`,
+    });
+    setPending(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setResetSent(true);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,6 +106,11 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         style={inputStyle}
       />
       {error && <p style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</p>}
+      {resetSent && (
+        <p style={{ color: "#9ecbff", fontSize: 13, marginBottom: 12 }}>
+          Check your email ({email}) for a link to reset your password.
+        </p>
+      )}
       <button
         type="submit"
         disabled={pending}
@@ -103,6 +127,26 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
       >
         {pending ? "Please wait…" : mode === "login" ? "Sign in" : "Sign up"}
       </button>
+      {mode === "login" && (
+        <button
+          type="button"
+          onClick={onForgotPassword}
+          disabled={pending}
+          style={{
+            width: "100%",
+            padding: "8px 12px",
+            marginTop: 8,
+            borderRadius: 6,
+            border: "none",
+            background: "transparent",
+            color: "#9ecbff",
+            fontSize: 13,
+            cursor: pending ? "default" : "pointer",
+          }}
+        >
+          Forgot password?
+        </button>
+      )}
     </form>
   );
 }
