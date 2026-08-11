@@ -31,16 +31,6 @@ import {
 
 const MUSCLES = [...ALL_MUSCLES].sort();
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 6,
-  border: "1px solid #333",
-  background: "#14171b",
-  color: "#e6e6e6",
-  fontSize: 14,
-};
-
 const TABS = [
   { key: "keys", label: "API Keys" },
   { key: "profile", label: "Training Profile" },
@@ -197,20 +187,7 @@ export default function SettingsForm({
         {TABS.map(({ key, label }) => {
           const active = tab === key;
           return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: active ? "1px solid #4f8ef7" : "1px solid #333",
-                background: active ? "#1c3157" : "#14171b",
-                color: active ? "#cddcf7" : "#888",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
+            <button key={key} type="button" onClick={() => setTab(key)} className="pill" data-active={active}>
               {label}
             </button>
           );
@@ -218,7 +195,7 @@ export default function SettingsForm({
       </div>
 
       <div style={{ display: tab === "keys" ? "block" : "none" }}>
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
         Hevy API key
       </label>
       <input
@@ -227,31 +204,33 @@ export default function SettingsForm({
         value={apiKey}
         onChange={(e) => { setApiKey(e.target.value); setSaved(false); }}
         required
-        style={{ ...inputStyle, marginBottom: 24 }}
+        className="input"
+        style={{ marginBottom: 24 }}
       />
-      <p style={{ color: "#666", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
+      <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
         Hevy app → Settings → Developer → generate an API key (requires Hevy Pro).
       </p>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
-        Anthropic API key <span style={{ color: "#666" }}>(optional)</span>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
+        Anthropic API key <span style={{ color: "var(--text-muted)" }}>(optional)</span>
       </label>
       <input
         type="password"
         placeholder="Paste your Anthropic API key"
         value={anthropicApiKey}
         onChange={(e) => { setAnthropicApiKey(e.target.value); setSaved(false); }}
-        style={{ ...inputStyle, marginBottom: 24 }}
+        className="input"
+        style={{ marginBottom: 24 }}
       />
-      <p style={{ color: "#666", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
+      <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: -18, marginBottom: 24 }}>
         console.anthropic.com → API Keys. Only needed for the AI Coach page, and it's your
         own key — usage is billed to your Anthropic account, not shared with other users.
       </p>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
         AI Coach model
       </label>
-      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 12 }}>
         Which Claude model powers your weekly review, routine review, and week-plan adaptation —
         billed against the Anthropic key above. Sonnet is the recommended default: a stronger
         balance of reasoning quality, speed, and cost than Haiku. Switch to Haiku for
@@ -266,16 +245,9 @@ export default function SettingsForm({
           return (
             <label
               key={tier}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                padding: "10px 12px",
-                borderRadius: 6,
-                border: active ? "1px solid #4f8ef7" : "1px solid #333",
-                background: active ? "#1c3157" : "#14171b",
-                cursor: "pointer",
-              }}
+              className="card card--compact card--selectable"
+              data-active={active}
+              style={{ display: "flex", flexDirection: "column", gap: 4, cursor: "pointer" }}
             >
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <input
@@ -288,10 +260,10 @@ export default function SettingsForm({
                     setSaved(false);
                   }}
                 />
-                <span style={{ fontSize: 14, color: "#e6e6e6" }}>{COACH_MODEL_LABELS[tier]}</span>
-                <span style={{ fontSize: 11, color: "#666" }}>{COACH_MODEL_COST_HINTS[tier]}</span>
+                <span style={{ fontSize: 14, color: "var(--text-primary)" }}>{COACH_MODEL_LABELS[tier]}</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{COACH_MODEL_COST_HINTS[tier]}</span>
               </span>
-              <span style={{ fontSize: 12, color: "#888", marginLeft: 24 }}>
+              <span style={{ fontSize: 12, color: "var(--text-secondary)", marginLeft: 24 }}>
                 {COACH_MODEL_DESCRIPTIONS[tier]}
               </span>
             </label>
@@ -302,16 +274,17 @@ export default function SettingsForm({
 
       <div style={{ display: tab === "profile" ? "block" : "none" }}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Training profile</h2>
-      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 12 }}>
         Tells the AI Coach what you're actually training for, so its advice and
         default volume targets are tailored to you instead of one-size-fits-all.
       </p>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>Goal</label>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Goal</label>
       <select
         value={profile.goal}
         onChange={(e) => updateProfile("goal", e.target.value as TrainingProfile["goal"])}
-        style={{ ...inputStyle, marginBottom: 16 }}
+        className="input"
+        style={{ marginBottom: 16 }}
       >
         {GOALS.map((g) => (
           <option key={g} value={g}>
@@ -320,11 +293,12 @@ export default function SettingsForm({
         ))}
       </select>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>Experience level</label>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Experience level</label>
       <select
         value={profile.experienceLevel}
         onChange={(e) => updateProfile("experienceLevel", e.target.value as TrainingProfile["experienceLevel"])}
-        style={{ ...inputStyle, marginBottom: 16 }}
+        className="input"
+        style={{ marginBottom: 16 }}
       >
         {EXPERIENCE_LEVELS.map((lvl) => (
           <option key={lvl} value={lvl}>
@@ -335,105 +309,81 @@ export default function SettingsForm({
 
       <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
-          <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>Training days/week</label>
+          <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Training days/week</label>
           <input
             type="number"
             min={1}
             max={7}
             value={profile.daysPerWeek}
             onChange={(e) => updateProfile("daysPerWeek", Number(e.target.value))}
-            style={inputStyle}
+            className="input"
           />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>Session length (min)</label>
+          <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>Session length (min)</label>
           <input
             type="number"
             min={15}
             step={5}
             value={profile.sessionMinutes}
             onChange={(e) => updateProfile("sessionMinutes", Number(e.target.value))}
-            style={inputStyle}
+            className="input"
           />
         </div>
       </div>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
-        Notes <span style={{ color: "#666" }}>(optional)</span>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
+        Notes <span style={{ color: "var(--text-muted)" }}>(optional)</span>
       </label>
       <textarea
         placeholder="Injuries, equipment limits, exercise preferences, anything the coach should factor in…"
         value={profile.notes}
         onChange={(e) => updateProfile("notes", e.target.value)}
         rows={3}
-        style={{ ...inputStyle, marginBottom: 24, resize: "vertical", fontFamily: "inherit" }}
+        className="input"
+        style={{ marginBottom: 24, resize: "vertical", fontFamily: "inherit" }}
       />
       </div>
 
       <div style={{ display: tab === "schedule" ? "block" : "none" }}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Weekly schedule</h2>
-      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 12 }}>
         Your normal training week, plus any upcoming date ranges you won&apos;t be able to train
         (holidays, travel). The AI Coach uses this to adapt a specific week&apos;s plan around the
         days you actually have available.
       </p>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
         Normal training days
       </label>
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
         {WEEKDAY_ORDER.map((weekday) => {
           const active = normalTrainingWeek.includes(weekday);
           return (
-            <button
-              key={weekday}
-              type="button"
-              onClick={() => toggleWeekday(weekday)}
-              style={{
-                padding: "6px 12px",
-                borderRadius: 6,
-                border: active ? "1px solid #4f8ef7" : "1px solid #333",
-                background: active ? "#1c3157" : "#14171b",
-                color: active ? "#cddcf7" : "#888",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
+            <button key={weekday} type="button" onClick={() => toggleWeekday(weekday)} className="pill" data-active={active}>
               {WEEKDAY_LABELS[weekday].slice(0, 3)}
             </button>
           );
         })}
       </div>
 
-      <label style={{ display: "block", fontSize: 13, color: "#888", marginBottom: 6 }}>
-        Upcoming exceptions <span style={{ color: "#666" }}>(holidays, travel, etc.)</span>
+      <label style={{ display: "block", fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>
+        Upcoming exceptions <span style={{ color: "var(--text-muted)" }}>(holidays, travel, etc.)</span>
       </label>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
         {scheduleExceptions.length === 0 && (
-          <p style={{ color: "#666", fontSize: 12, margin: 0 }}>None set.</p>
+          <p style={{ color: "var(--text-muted)", fontSize: 12, margin: 0 }}>None set.</p>
         )}
         {scheduleExceptions.map((exception) => (
           <div
             key={exception.id}
             style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}
           >
-            <span style={{ color: "#ccc" }}>
+            <span style={{ color: "var(--text-primary)" }}>
               {exception.startDate} → {exception.endDate}
             </span>
-            {exception.note && <span style={{ color: "#888" }}>({exception.note})</span>}
-            <button
-              type="button"
-              onClick={() => removeException(exception.id)}
-              style={{
-                background: "none",
-                border: "1px solid #333",
-                borderRadius: 6,
-                padding: "2px 8px",
-                color: "#888",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
+            {exception.note && <span style={{ color: "var(--text-secondary)" }}>({exception.note})</span>}
+            <button type="button" onClick={() => removeException(exception.id)} className="btn btn-sm btn-ghost">
               Remove
             </button>
           </div>
@@ -444,35 +394,30 @@ export default function SettingsForm({
           type="date"
           value={newExceptionStart}
           onChange={(e) => setNewExceptionStart(e.target.value)}
-          style={{ ...inputStyle, width: 150 }}
+          className="input"
+          style={{ width: 150 }}
         />
-        <span style={{ color: "#666" }}>to</span>
+        <span style={{ color: "var(--text-muted)" }}>to</span>
         <input
           type="date"
           value={newExceptionEnd}
           onChange={(e) => setNewExceptionEnd(e.target.value)}
-          style={{ ...inputStyle, width: 150 }}
+          className="input"
+          style={{ width: 150 }}
         />
         <input
           type="text"
           placeholder="Note (e.g. Holiday)"
           value={newExceptionNote}
           onChange={(e) => setNewExceptionNote(e.target.value)}
-          style={{ ...inputStyle, width: 160 }}
+          className="input"
+          style={{ width: 160 }}
         />
         <button
           type="button"
           onClick={addException}
           disabled={!newExceptionStart || !newExceptionEnd}
-          style={{
-            background: "#2a2d33",
-            border: "1px solid #3a3d44",
-            borderRadius: 6,
-            padding: "8px 12px",
-            color: "#e2e2e2",
-            fontSize: 13,
-            cursor: "pointer",
-          }}
+          className="btn btn-neutral btn-sm"
         >
           Add
         </button>
@@ -481,7 +426,7 @@ export default function SettingsForm({
 
       <div style={{ display: tab === "volume" ? "block" : "none" }}>
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Weekly volume targets</h2>
-      <p style={{ color: "#888", fontSize: 12, marginBottom: 12 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 12, marginBottom: 12 }}>
         Working sets per muscle group, per week. Ranges are computed from published
         training-volume landmark research (MV/MEV/MAV/MRV, Israetel et al.) for your goal and
         experience — the same framework the AI Coach itself reasons with, so "Focus" pushes
@@ -500,11 +445,12 @@ export default function SettingsForm({
           const computed = computedTargets[muscle];
           return (
             <div key={muscle} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
-              <span style={{ width: 80, flexShrink: 0, color: ignored ? "#666" : undefined }}>{muscle}</span>
+              <span style={{ width: 80, flexShrink: 0, color: ignored ? "var(--text-muted)" : undefined }}>{muscle}</span>
               <select
                 value={priority}
                 onChange={(e) => updatePriority(muscle, e.target.value as MusclePriority)}
-                style={{ ...inputStyle, width: 100, padding: "6px 8px" }}
+                className="input"
+                style={{ width: 100, padding: "6px 8px" }}
               >
                 {MUSCLE_PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -514,7 +460,7 @@ export default function SettingsForm({
               </select>
 
               {ignored || !computed ? (
-                <span style={{ color: "#666", fontSize: 12 }}>not tracked</span>
+                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>not tracked</span>
               ) : isOverridden ? (
                 <>
                   <input
@@ -522,51 +468,29 @@ export default function SettingsForm({
                     min={0}
                     value={overrides[muscle].min}
                     onChange={(e) => updateOverride(muscle, "min", Number(e.target.value))}
-                    style={{ ...inputStyle, width: 60, padding: "6px 8px" }}
+                    className="input"
+                    style={{ width: 60, padding: "6px 8px" }}
                   />
-                  <span style={{ color: "#666" }}>to</span>
+                  <span style={{ color: "var(--text-muted)" }}>to</span>
                   <input
                     type="number"
                     min={0}
                     value={overrides[muscle].max}
                     onChange={(e) => updateOverride(muscle, "max", Number(e.target.value))}
-                    style={{ ...inputStyle, width: 60, padding: "6px 8px" }}
+                    className="input"
+                    style={{ width: 60, padding: "6px 8px" }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => resetOverride(muscle)}
-                    style={{
-                      background: "none",
-                      border: "1px solid #333",
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                      color: "#888",
-                      fontSize: 11,
-                      cursor: "pointer",
-                    }}
-                  >
+                  <button type="button" onClick={() => resetOverride(muscle)} className="btn btn-sm btn-ghost">
                     Reset to coach recommendation
                   </button>
                 </>
               ) : (
                 <>
-                  <span style={{ color: "#ccc" }}>
+                  <span style={{ color: "var(--text-primary)" }}>
                     {computed.min}-{computed.max} sets
                   </span>
-                  <span style={{ color: "#666", fontSize: 11 }}>coach-recommended</span>
-                  <button
-                    type="button"
-                    onClick={() => startOverride(muscle)}
-                    style={{
-                      background: "none",
-                      border: "1px solid #333",
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                      color: "#888",
-                      fontSize: 11,
-                      cursor: "pointer",
-                    }}
-                  >
+                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>coach-recommended</span>
+                  <button type="button" onClick={() => startOverride(muscle)} className="btn btn-sm btn-ghost">
                     Override
                   </button>
                 </>
@@ -577,22 +501,10 @@ export default function SettingsForm({
       </div>
       </div>
 
-      {error && <p style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</p>}
-      {saved && <p style={{ color: "#68d391", fontSize: 13, marginBottom: 12 }}>Saved.</p>}
+      {error && <p style={{ color: "var(--error)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
+      {saved && <p style={{ color: "var(--success)", fontSize: 13, marginBottom: 12 }}>Saved.</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        style={{
-          padding: "10px 18px",
-          borderRadius: 6,
-          border: "none",
-          background: "#4f8ef7",
-          color: "#fff",
-          fontSize: 14,
-          cursor: pending ? "default" : "pointer",
-        }}
-      >
+      <button type="submit" disabled={pending} className="btn btn-primary">
         {pending ? "Saving…" : "Save"}
       </button>
     </form>

@@ -44,20 +44,20 @@ function ExerciseDiffRow({ edits }: { edits: ProposedEdit[] }) {
   };
 
   return (
-    <div style={{ padding: "8px 0", borderTop: "1px solid #23262b" }}>
+    <div style={{ padding: "8px 0", borderTop: "1px solid var(--border-default)" }}>
       <div style={{ fontWeight: 500, marginBottom: 4 }}>{edits[0].exerciseTitle}</div>
-      <div style={{ display: "flex", gap: 16, fontSize: 13, color: "#999" }}>
-        <span style={{ color: changed.sets ? "#f7b84f" : "#999" }}>
+      <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--text-secondary)" }}>
+        <span style={{ color: changed.sets ? "var(--warning)" : "var(--text-secondary)" }}>
           {before.workingSets} → {after.workingSets} sets
         </span>
-        <span style={{ color: changed.weight ? "#f7b84f" : "#999" }}>
+        <span style={{ color: changed.weight ? "var(--warning)" : "var(--text-secondary)" }}>
           {formatWeight(before.topWeightKg)} → {formatWeight(after.topWeightKg)}
         </span>
-        <span style={{ color: changed.rest ? "#f7b84f" : "#999" }}>
+        <span style={{ color: changed.rest ? "var(--warning)" : "var(--text-secondary)" }}>
           rest {formatRest(before.restSeconds)} → {formatRest(after.restSeconds)}
         </span>
       </div>
-      <ul style={{ margin: "4px 0 0 16px", padding: 0, color: "#666", fontSize: 12, fontStyle: "italic" }}>
+      <ul style={{ margin: "4px 0 0 16px", padding: 0, color: "var(--text-muted)", fontSize: 12, fontStyle: "italic" }}>
         {edits.map((e) => (
           <li key={e.id}>
             {ACTION_LABEL[e.action]} — {e.rationale}
@@ -113,33 +113,25 @@ export default function RoutineDraftCard({
   }
 
   return (
-    <div style={{ border: "1px solid #23262b", borderRadius: 8, padding: 12, fontSize: 13 }}>
+    <div className="card-nested" style={{ fontSize: 13 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>{routineTitle}</div>
         {status === "pending" ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              onClick={() => act("apply")}
-              disabled={pending}
-              style={{ background: "#1f4d2e", color: "#9ee6ac", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}
-            >
+            <button onClick={() => act("apply")} disabled={pending} className="btn btn-sm btn-success">
               Accept draft &amp; apply to Hevy
             </button>
-            <button
-              onClick={() => act("reject")}
-              disabled={pending}
-              style={{ background: "#2a2d33", color: "#ccc", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}
-            >
+            <button onClick={() => act("reject")} disabled={pending} className="btn btn-sm btn-neutral">
               Discard draft
             </button>
           </div>
         ) : (
-          <span style={{ color: status === "applied" ? "#68d391" : "#888", fontSize: 12 }}>
+          <span style={{ color: status === "applied" ? "var(--success)" : "var(--text-secondary)", fontSize: 12 }}>
             {status === "applied" ? "applied ✓" : "discarded"}
           </span>
         )}
       </div>
-      {error && <div style={{ color: "#f56565", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: "var(--error)", fontSize: 12, marginBottom: 8 }}>{error}</div>}
       <div>
         {Array.from(byExercise.values()).map((exerciseEdits) => (
           <ExerciseDiffRow key={exerciseEdits[0].exerciseIndex} edits={exerciseEdits} />

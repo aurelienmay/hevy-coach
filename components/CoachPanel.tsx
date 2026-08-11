@@ -44,33 +44,25 @@ function TargetEditRow({ reviewId, edit }: { reviewId: string; edit: ProposedTar
   }
 
   return (
-    <div style={{ border: "1px solid #23262b", borderRadius: 8, padding: 12, fontSize: 13 }}>
+    <div className="card-nested" style={{ fontSize: 13 }}>
       <div style={{ fontWeight: 500, textTransform: "capitalize" }}>{edit.muscle} weekly target</div>
-      <div style={{ color: "#999", margin: "4px 0" }}>
+      <div style={{ color: "var(--text-secondary)", margin: "4px 0" }}>
         {edit.currentMin}-{edit.currentMax} sets → {edit.newMin}-{edit.newMax} sets
       </div>
-      <div style={{ color: "#666", fontStyle: "italic", marginBottom: 8 }}>{edit.rationale}</div>
+      <div style={{ color: "var(--text-muted)", fontStyle: "italic", marginBottom: 8 }}>{edit.rationale}</div>
 
       {edit.status === "pending" ? (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            onClick={() => act("apply")}
-            disabled={pending}
-            style={{ background: "#1f4d2e", color: "#9ee6ac", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}
-          >
+          <button onClick={() => act("apply")} disabled={pending} className="btn btn-sm btn-success">
             Accept &amp; update target
           </button>
-          <button
-            onClick={() => act("reject")}
-            disabled={pending}
-            style={{ background: "#2a2d33", color: "#ccc", border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}
-          >
+          <button onClick={() => act("reject")} disabled={pending} className="btn btn-sm btn-neutral">
             Reject
           </button>
-          {error && <span style={{ color: "#f56565", fontSize: 12 }}>{error}</span>}
+          {error && <span style={{ color: "var(--error)", fontSize: 12 }}>{error}</span>}
         </div>
       ) : (
-        <span style={{ color: edit.status === "applied" ? "#68d391" : "#888", fontSize: 12 }}>
+        <span style={{ color: edit.status === "applied" ? "var(--success)" : "var(--text-secondary)", fontSize: 12 }}>
           {TARGET_STATUS_LABEL[edit.status]}
         </span>
       )}
@@ -80,7 +72,7 @@ function TargetEditRow({ reviewId, edit }: { reviewId: string; edit: ProposedTar
 
 const markdownComponents = {
   p: ({ children }: { children?: React.ReactNode }) => <p style={{ margin: "0 0 10px" }}>{children}</p>,
-  strong: ({ children }: { children?: React.ReactNode }) => <strong style={{ fontWeight: 600, color: "#fff" }}>{children}</strong>,
+  strong: ({ children }: { children?: React.ReactNode }) => <strong style={{ fontWeight: 600, color: "var(--text-heading)" }}>{children}</strong>,
   ul: ({ children }: { children?: React.ReactNode }) => <ul style={{ margin: "0 0 10px", paddingLeft: 20 }}>{children}</ul>,
   ol: ({ children }: { children?: React.ReactNode }) => <ol style={{ margin: "0 0 10px", paddingLeft: 20 }}>{children}</ol>,
   li: ({ children }: { children?: React.ReactNode }) => <li style={{ marginBottom: 4 }}>{children}</li>,
@@ -99,7 +91,7 @@ function ReviewCard({ review }: { review: CoachReview }) {
       : routineIds.length + review.proposed_target_edits.filter((e) => e.status === "pending").length;
 
   return (
-    <div style={{ background: "#14171b", border: "1px solid #23262b", borderRadius: 10, padding: 16 }}>
+    <div className="card">
       <button
         onClick={() => setExpanded((v) => !v)}
         style={{
@@ -112,18 +104,18 @@ function ReviewCard({ review }: { review: CoachReview }) {
           boxSizing: "border-box",
         }}
       >
-        <div style={{ color: "#ccc", fontSize: 13 }}>
+        <div style={{ color: "var(--text-primary)", fontSize: 13 }}>
           Week of {new Date(review.week_start).toLocaleDateString()}
-          <span style={{ color: "#666", fontSize: 12 }}>
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
             {" "}
             — generated {new Date(review.created_at).toLocaleString()}
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {pendingCount > 0 && (
-            <span style={{ color: "#e6c56b", fontSize: 11 }}>{pendingCount} pending</span>
+            <span style={{ color: "var(--warning-text)", fontSize: 11 }}>{pendingCount} pending</span>
           )}
-          <span style={{ color: "#666", fontSize: 12 }}>{expanded ? "▲ Hide" : "▼ Show"}</span>
+          <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{expanded ? "▲ Hide" : "▼ Show"}</span>
         </div>
       </button>
 
@@ -156,7 +148,7 @@ function ReviewCard({ review }: { review: CoachReview }) {
 
               {review.proposed_target_edits.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ color: "#888", fontSize: 12 }}>Proposed weekly volume target changes</div>
+                  <div style={{ color: "var(--text-secondary)", fontSize: 12 }}>Proposed weekly volume target changes</div>
                   {review.proposed_target_edits.map((edit) => (
                     <TargetEditRow key={edit.id} reviewId={review.id} edit={edit} />
                   ))}
@@ -241,75 +233,36 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
   return (
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-        <button
-          onClick={() => generate("performance")}
-          disabled={generatingType !== null}
-          style={{
-            background: "#4f8ef7",
-            color: "#fff",
-            border: "none",
-            borderRadius: 8,
-            padding: "10px 18px",
-            fontSize: 14,
-            cursor: generatingType ? "default" : "pointer",
-          }}
-        >
+        <button onClick={() => generate("performance")} disabled={generatingType !== null} className="btn btn-primary">
           {generatingType === "performance" ? "Analyzing your week…" : "Generate weekly review"}
         </button>
-        <button
-          onClick={() => generate("plan")}
-          disabled={generatingType !== null}
-          style={{
-            background: "#2a2d33",
-            color: "#e2e2e2",
-            border: "1px solid #3a3d44",
-            borderRadius: 8,
-            padding: "10px 18px",
-            fontSize: 14,
-            cursor: generatingType ? "default" : "pointer",
-          }}
-        >
+        <button onClick={() => generate("plan")} disabled={generatingType !== null} className="btn btn-neutral">
           {generatingType === "plan" ? "Reviewing your routines…" : "Review my favorite routines"}
         </button>
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-        <label style={{ color: "#888", fontSize: 12 }}>
+        <label style={{ color: "var(--text-secondary)", fontSize: 12 }}>
           Plan the week of{" "}
           <input
             type="date"
             value={weekStartInput}
             onChange={(e) => setWeekStartInput(e.target.value)}
-            style={{
-              background: "#14171b",
-              color: "#e6e6e6",
-              border: "1px solid #333",
-              borderRadius: 6,
-              padding: "6px 8px",
-              fontSize: 13,
-              marginLeft: 6,
-            }}
+            className="input"
+            style={{ width: "auto", display: "inline-block", padding: "6px 8px", fontSize: 13, marginLeft: 6 }}
           />
         </label>
         <button
           onClick={generateWeekPlan}
           disabled={generatingType !== null || !weekStartInput}
-          style={{
-            background: "#2a2d33",
-            color: "#e2e2e2",
-            border: "1px solid #3a3d44",
-            borderRadius: 8,
-            padding: "8px 16px",
-            fontSize: 13,
-            cursor: generatingType ? "default" : "pointer",
-          }}
+          className="btn btn-neutral btn-sm"
         >
           {generatingType === "week_plan" ? "Adapting your week…" : "Adapt this week's plan"}
         </button>
       </div>
-      {error && <div style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: "var(--error)", fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
-      <div style={{ display: "flex", gap: 4, marginTop: 20, borderBottom: "1px solid #23262b" }}>
+      <div style={{ display: "flex", gap: 4, marginTop: 20, borderBottom: "1px solid var(--border-default)" }}>
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -317,12 +270,13 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
             style={{
               background: "none",
               border: "none",
-              borderBottom: activeTab === tab ? "2px solid #4f8ef7" : "2px solid transparent",
-              color: activeTab === tab ? "#fff" : "#888",
+              borderBottom: activeTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
+              color: activeTab === tab ? "var(--text-heading)" : "var(--text-secondary)",
               padding: "8px 14px",
               fontSize: 13,
               cursor: "pointer",
               marginBottom: -1,
+              transition: "color var(--transition-fast), border-color var(--transition-fast)",
             }}
           >
             {TAB_LABEL[tab]}
@@ -334,7 +288,7 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
         {tabReviews.length === 0 ? (
-          <p style={{ color: "#888" }}>No {TAB_LABEL[activeTab].toLowerCase()} yet — generate one above.</p>
+          <p style={{ color: "var(--text-secondary)" }}>No {TAB_LABEL[activeTab].toLowerCase()} yet — generate one above.</p>
         ) : (
           tabReviews.map((r) => <ReviewCard key={r.id} review={r} />)
         )}

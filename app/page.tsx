@@ -71,28 +71,22 @@ export default async function OverviewPage({
           {weekOffset === 0 ? "This week" : formatRange(weekStart, weekEnd)} — working sets only
         </h1>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link
-            href={`/?week=${weekOffset - 1}`}
-            style={{ border: "1px solid #333", borderRadius: 6, padding: "4px 10px", fontSize: 13, color: "#ccc", textDecoration: "none" }}
-          >
+          <Link href={`/?week=${weekOffset - 1}`} className="btn btn-sm">
             ← Prev week
           </Link>
           {weekOffset < 0 && (
-            <Link
-              href={`/?week=${weekOffset + 1}`}
-              style={{ border: "1px solid #333", borderRadius: 6, padding: "4px 10px", fontSize: 13, color: "#ccc", textDecoration: "none" }}
-            >
+            <Link href={`/?week=${weekOffset + 1}`} className="btn btn-sm">
               Next week →
             </Link>
           )}
         </div>
       </div>
-      <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
         {formatRange(weekStart, weekEnd)} · warm-up sets excluded.
       </p>
 
       {unmapped.length > 0 && (
-        <p style={{ color: "#e0a030", fontSize: 13, marginBottom: 16 }}>
+        <p style={{ color: "var(--warning)", fontSize: 13, marginBottom: 16 }}>
           Not counted toward any muscle (unmapped exercise): {unmapped.join(", ")}
         </p>
       )}
@@ -105,31 +99,31 @@ export default async function OverviewPage({
       />
 
       {volume.length === 0 ? (
-        <p style={{ color: "#888" }}>No working sets logged this week.</p>
+        <p style={{ color: "var(--text-secondary)" }}>No working sets logged this week.</p>
       ) : (
         <VolumeChart data={volume} />
       )}
 
       <h2 style={{ fontSize: 18, marginTop: 32, marginBottom: 12 }}>Sessions this week</h2>
       {sessions.length === 0 ? (
-        <p style={{ color: "#888", fontSize: 13 }}>No sessions logged this week.</p>
+        <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No sessions logged this week.</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <table className="table">
           <thead>
-            <tr style={{ textAlign: "left", color: "#888", borderBottom: "1px solid #333" }}>
-              <th style={{ padding: "6px 8px" }}>Date</th>
-              <th style={{ padding: "6px 8px" }}>Title</th>
-              <th style={{ padding: "6px 8px" }}>Working sets</th>
-              <th style={{ padding: "6px 8px" }}>Total sets (incl. warmup)</th>
+            <tr>
+              <th>Date</th>
+              <th>Title</th>
+              <th>Working sets</th>
+              <th>Total sets (incl. warmup)</th>
             </tr>
           </thead>
           <tbody>
             {sessions.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid #1c1f23" }}>
-                <td style={{ padding: "6px 8px" }}>{new Date(s.start_time).toLocaleDateString()}</td>
-                <td style={{ padding: "6px 8px" }}>{s.title}</td>
-                <td style={{ padding: "6px 8px" }}>{workingSetsCount(s)}</td>
-                <td style={{ padding: "6px 8px" }}>{totalSetsCount(s)}</td>
+              <tr key={s.id}>
+                <td>{new Date(s.start_time).toLocaleDateString()}</td>
+                <td>{s.title}</td>
+                <td>{workingSetsCount(s)}</td>
+                <td>{totalSetsCount(s)}</td>
               </tr>
             ))}
           </tbody>

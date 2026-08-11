@@ -25,26 +25,14 @@ export default function OtherRoutines() {
 
   if (routines === null) {
     return (
-      <button
-        onClick={loadOthers}
-        disabled={loading}
-        style={{
-          background: "none",
-          border: "1px solid #333",
-          borderRadius: 8,
-          padding: "8px 14px",
-          color: "#ccc",
-          fontSize: 13,
-          cursor: loading ? "default" : "pointer",
-        }}
-      >
+      <button onClick={loadOthers} disabled={loading} className="btn btn-neutral">
         {loading ? "Loading…" : error ? "Failed to load — try again" : "Show other routines to add a favorite"}
       </button>
     );
   }
 
   if (routines.length === 0) {
-    return <p style={{ color: "#888", fontSize: 13 }}>No other routines.</p>;
+    return <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No other routines.</p>;
   }
 
   return (

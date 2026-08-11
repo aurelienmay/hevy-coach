@@ -20,21 +20,10 @@ export default function Error({
   return (
     <main>
       <h1 style={{ fontSize: 22, marginBottom: 8 }}>Something went wrong</h1>
-      <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
         {error.message || "An unexpected error occurred."}
       </p>
-      <button
-        onClick={() => reset()}
-        style={{
-          background: "#4f8ef7",
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          padding: "10px 18px",
-          fontSize: 14,
-          cursor: "pointer",
-        }}
-      >
+      <button onClick={() => reset()} className="btn btn-primary">
         Try again
       </button>
     </main>

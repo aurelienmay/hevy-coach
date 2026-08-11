@@ -27,14 +27,14 @@ export default async function SessionsPage() {
   return (
     <main>
       <h1 style={{ fontSize: 22, marginBottom: 16 }}>Sessions</h1>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+      <table className="table">
         <thead>
-          <tr style={{ textAlign: "left", color: "#888", borderBottom: "1px solid #333" }}>
-            <th style={{ padding: "6px 8px" }}>Date</th>
-            <th style={{ padding: "6px 8px" }}>Title</th>
-            <th style={{ padding: "6px 8px" }}>Duration</th>
-            <th style={{ padding: "6px 8px" }}>Working sets</th>
-            <th style={{ padding: "6px 8px" }}>Total sets</th>
+          <tr>
+            <th>Date</th>
+            <th>Title</th>
+            <th>Duration</th>
+            <th>Working sets</th>
+            <th>Total sets</th>
           </tr>
         </thead>
         <tbody>
@@ -43,14 +43,14 @@ export default async function SessionsPage() {
               (new Date(s.end_time).getTime() - new Date(s.start_time).getTime()) / 60000
             );
             return (
-              <tr key={s.id} style={{ borderBottom: "1px solid #1c1f23" }}>
-                <td style={{ padding: "6px 8px" }}>{new Date(s.start_time).toLocaleDateString()}</td>
-                <td style={{ padding: "6px 8px" }}>
+              <tr key={s.id}>
+                <td>{new Date(s.start_time).toLocaleDateString()}</td>
+                <td>
                   <SessionTitleEditor sessionId={s.id} title={s.title} />
                 </td>
-                <td style={{ padding: "6px 8px" }}>{durMin} min</td>
-                <td style={{ padding: "6px 8px" }}>{workingSetsCount(s)}</td>
-                <td style={{ padding: "6px 8px", color: "#888" }}>{totalSetsCount(s)}</td>
+                <td>{durMin} min</td>
+                <td>{workingSetsCount(s)}</td>
+                <td style={{ color: "var(--text-secondary)" }}>{totalSetsCount(s)}</td>
               </tr>
             );
           })}

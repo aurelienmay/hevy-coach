@@ -4,17 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 6,
-  border: "1px solid #333",
-  background: "#14171b",
-  color: "#e6e6e6",
-  fontSize: 14,
-  marginBottom: 12,
-};
-
 export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
   const supabase = createClient();
@@ -80,7 +69,7 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   if (confirmSent) {
     return (
-      <p style={{ color: "#ccc", fontSize: 14 }}>
+      <p style={{ color: "var(--text-primary)", fontSize: 14 }}>
         Check your email ({email}) for a confirmation link to finish creating your account.
       </p>
     );
@@ -94,7 +83,8 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         required
-        style={inputStyle}
+        className="input"
+        style={{ marginBottom: 12 }}
       />
       <input
         type="password"
@@ -103,28 +93,16 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         onChange={(e) => setPassword(e.target.value)}
         required
         minLength={6}
-        style={inputStyle}
+        className="input"
+        style={{ marginBottom: 12 }}
       />
-      {error && <p style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</p>}
+      {error && <p style={{ color: "var(--error)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
       {resetSent && (
-        <p style={{ color: "#9ecbff", fontSize: 13, marginBottom: 12 }}>
+        <p style={{ color: "var(--link)", fontSize: 13, marginBottom: 12 }}>
           Check your email ({email}) for a link to reset your password.
         </p>
       )}
-      <button
-        type="submit"
-        disabled={pending}
-        style={{
-          width: "100%",
-          padding: "10px 12px",
-          borderRadius: 6,
-          border: "none",
-          background: "#4f8ef7",
-          color: "#fff",
-          fontSize: 14,
-          cursor: pending ? "default" : "pointer",
-        }}
-      >
+      <button type="submit" disabled={pending} className="btn btn-primary" style={{ width: "100%" }}>
         {pending ? "Please wait…" : mode === "login" ? "Sign in" : "Sign up"}
       </button>
       {mode === "login" && (
@@ -132,17 +110,8 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
           type="button"
           onClick={onForgotPassword}
           disabled={pending}
-          style={{
-            width: "100%",
-            padding: "8px 12px",
-            marginTop: 8,
-            borderRadius: 6,
-            border: "none",
-            background: "transparent",
-            color: "#9ecbff",
-            fontSize: 13,
-            cursor: pending ? "default" : "pointer",
-          }}
+          className="btn btn-ghost"
+          style={{ width: "100%", marginTop: 8 }}
         >
           Forgot password?
         </button>

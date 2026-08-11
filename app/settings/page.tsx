@@ -54,17 +54,17 @@ export default async function SettingsPage({
   return (
     <main>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>Settings</h1>
-      <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
         Your API keys and weekly volume targets — used across the whole dashboard.
       </p>
 
       {needsKey && (
-        <p style={{ color: "#f7b84f", fontSize: 13, marginBottom: 20 }}>
+        <p style={{ color: "var(--warning)", fontSize: 13, marginBottom: 20 }}>
           Add your Hevy API key below to start using the dashboard.
         </p>
       )}
       {needsAnthropicKey && (
-        <p style={{ color: "#f7b84f", fontSize: 13, marginBottom: 20 }}>
+        <p style={{ color: "var(--warning)", fontSize: 13, marginBottom: 20 }}>
           Add your own Anthropic API key below to use the AI Coach.
         </p>
       )}

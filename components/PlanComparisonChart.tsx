@@ -61,7 +61,7 @@ export default function PlanComparisonChart({
     .sort((a, b) => Math.max(...b.values.map((v) => v.sets)) - Math.max(...a.values.map((v) => v.sets)));
 
   return (
-    <div style={{ background: "#14171b", border: "1px solid #23262b", borderRadius: 10, padding: 16, marginBottom: 32 }}>
+    <div className="card" style={{ marginBottom: 32 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 4px" }}>Plan volume comparison</h2>
       <p style={{ color: "#898781", fontSize: 12, marginBottom: 12 }}>
         Working sets per muscle: current plan vs. compare plan vs. adaptation pool, against a
@@ -81,7 +81,7 @@ export default function PlanComparisonChart({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {rows.map(({ muscle, target, values }) => (
           <div key={muscle} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 90, flexShrink: 0, fontSize: 13, color: "#e6e6e6" }}>{muscle}</span>
+            <span style={{ width: 90, flexShrink: 0, fontSize: 13, color: "var(--text-primary)" }}>{muscle}</span>
 
             <div style={{ flex: 1, position: "relative" }}>
               {target && (
@@ -134,7 +134,7 @@ export default function PlanComparisonChart({
               </div>
             </div>
 
-            <span style={{ width: 76, flexShrink: 0, fontSize: 11, color: "#666" }}>
+            <span style={{ width: 76, flexShrink: 0, fontSize: 11, color: "var(--text-muted)" }}>
               {target ? `target ${target.min}-${target.max}` : "no target"}
             </span>
           </div>

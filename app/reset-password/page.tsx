@@ -4,17 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 6,
-  border: "1px solid #333",
-  background: "#14171b",
-  color: "#e6e6e6",
-  fontSize: 14,
-  marginBottom: 12,
-};
-
 export default function ResetPasswordPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -56,7 +45,8 @@ export default function ResetPasswordPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={6}
-          style={inputStyle}
+          className="input"
+          style={{ marginBottom: 12 }}
         />
         <input
           type="password"
@@ -65,23 +55,11 @@ export default function ResetPasswordPage() {
           onChange={(e) => setConfirm(e.target.value)}
           required
           minLength={6}
-          style={inputStyle}
+          className="input"
+          style={{ marginBottom: 12 }}
         />
-        {error && <p style={{ color: "#f56565", fontSize: 13, marginBottom: 12 }}>{error}</p>}
-        <button
-          type="submit"
-          disabled={pending}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: 6,
-            border: "none",
-            background: "#4f8ef7",
-            color: "#fff",
-            fontSize: 14,
-            cursor: pending ? "default" : "pointer",
-          }}
-        >
+        {error && <p style={{ color: "var(--error)", fontSize: 13, marginBottom: 12 }}>{error}</p>}
+        <button type="submit" disabled={pending} className="btn btn-primary" style={{ width: "100%" }}>
           {pending ? "Please wait…" : "Update password"}
         </button>
       </form>

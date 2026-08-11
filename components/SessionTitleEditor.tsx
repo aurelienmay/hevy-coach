@@ -60,17 +60,10 @@ export default function SessionTitleEditor({
             }
           }}
           onBlur={save}
-          style={{
-            background: "#0f1114",
-            border: "1px solid #333",
-            borderRadius: 4,
-            color: "inherit",
-            fontSize: 14,
-            padding: "2px 6px",
-            width: "100%",
-          }}
+          className="input"
+          style={{ color: "inherit", fontSize: 14, padding: "2px 6px" }}
         />
-        {error && <span style={{ color: "#f56565", fontSize: 12 }}>{error}</span>}
+        {error && <span style={{ color: "var(--error)", fontSize: 12 }}>{error}</span>}
       </div>
     );
   }

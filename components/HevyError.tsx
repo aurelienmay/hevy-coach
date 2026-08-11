@@ -20,22 +20,11 @@ export default function HevyError({ error }: { error: unknown }) {
   }
 
   return (
-    <div
-      style={{
-        background: "#14171b",
-        border: "1px solid #23262b",
-        borderRadius: 10,
-        padding: 16,
-        color: "#ccc",
-        fontSize: 14,
-      }}
-    >
+    <div className="card" style={{ color: "var(--text-primary)", fontSize: 14 }}>
       <p style={{ margin: 0 }}>{message}</p>
       {showSettingsLink && (
         <p style={{ margin: "10px 0 0" }}>
-          <Link href="/settings" style={{ color: "#9ecbff" }}>
-            Update it in Settings →
-          </Link>
+          <Link href="/settings">Update it in Settings →</Link>
         </p>
       )}
     </div>

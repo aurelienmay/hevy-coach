@@ -31,34 +31,21 @@ function DayRow({ reviewId, day }: { reviewId: string; day: PlannedDay }) {
   }
 
   return (
-    <div style={{ border: "1px solid #23262b", borderRadius: 8, padding: 12 }}>
+    <div className="card-nested">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
         <div>
           <div style={{ fontWeight: 500, fontSize: 13 }}>
             {day.weekday} · {day.date}
           </div>
-          <div style={{ color: day.status === "train" ? "#cddcf7" : "#888", fontSize: 13, marginTop: 2 }}>
+          <div style={{ color: day.status === "train" ? "var(--accent-text-on-bg)" : "var(--text-secondary)", fontSize: 13, marginTop: 2 }}>
             {day.status === "train" ? day.sessionTitle : "Rest"}
           </div>
         </div>
         {day.status === "train" && day.exercises.length > 0 && (
           day.hevyRoutineId ? (
-            <span style={{ color: "#68d391", fontSize: 12 }}>Created in Hevy ✓</span>
+            <span style={{ color: "var(--success)", fontSize: 12 }}>Created in Hevy ✓</span>
           ) : (
-            <button
-              onClick={push}
-              disabled={pending}
-              style={{
-                background: "#1f4d2e",
-                color: "#9ee6ac",
-                border: "none",
-                borderRadius: 6,
-                padding: "4px 10px",
-                cursor: pending ? "default" : "pointer",
-                fontSize: 12,
-                whiteSpace: "nowrap",
-              }}
-            >
+            <button onClick={push} disabled={pending} className="btn btn-sm btn-success" style={{ whiteSpace: "nowrap" }}>
               {pending ? "Pushing…" : "Push to Hevy"}
             </button>
           )
@@ -66,7 +53,7 @@ function DayRow({ reviewId, day }: { reviewId: string; day: PlannedDay }) {
       </div>
 
       {day.status === "train" && day.exercises.length > 0 && (
-        <ul style={{ margin: "6px 0", paddingLeft: 18, fontSize: 13, color: "#ccc" }}>
+        <ul style={{ margin: "6px 0", paddingLeft: 18, fontSize: 13, color: "var(--text-primary)" }}>
           {day.exercises.map((ex, i) => (
             <li key={i} style={{ marginBottom: 2 }}>
               {ex.exerciseTitle} ({ex.muscle}) — {ex.workingSets} sets
@@ -77,8 +64,8 @@ function DayRow({ reviewId, day }: { reviewId: string; day: PlannedDay }) {
         </ul>
       )}
 
-      {day.rationale && <div style={{ color: "#666", fontStyle: "italic", fontSize: 12 }}>{day.rationale}</div>}
-      {error && <div style={{ color: "#f56565", fontSize: 12, marginTop: 6 }}>{error}</div>}
+      {day.rationale && <div style={{ color: "var(--text-muted)", fontStyle: "italic", fontSize: 12 }}>{day.rationale}</div>}
+      {error && <div style={{ color: "var(--error)", fontSize: 12, marginTop: 6 }}>{error}</div>}
     </div>
   );
 }

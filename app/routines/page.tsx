@@ -32,7 +32,7 @@ function RoutineColumn({ title, empty, routines }: { title: string; empty: strin
     <div>
       <h2 style={{ fontSize: 16, marginBottom: 12 }}>{title}</h2>
       {routines.length === 0 ? (
-        <p style={{ color: "#888", fontSize: 13 }}>{empty}</p>
+        <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>{empty}</p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {routines.map((r) => (
@@ -91,7 +91,7 @@ export default async function RoutinesPage() {
   return (
     <main>
       <h1 style={{ fontSize: 22, marginBottom: 4 }}>Routines</h1>
-      <p style={{ color: "#888", fontSize: 13, marginBottom: 20 }}>
+      <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>
         Star a routine (★) to mark it part of your current weekly plan. Toggle ⚖ to add it to the
         plan comparison, or ⟳ to add it to the AI Coach&apos;s reusable pool for schedule-adapted
         weeks — a routine can carry any combination of these tags.
