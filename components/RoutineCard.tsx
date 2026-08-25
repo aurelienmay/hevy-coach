@@ -163,9 +163,9 @@ export default function RoutineCard({ routine, compact = false }: { routine: Rou
 
   return (
     <div className="card card--interactive">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>{routine.title}</h2>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {compareButton}
           {adaptButton}
           {starButton}

@@ -23,26 +23,53 @@ function NavLinkLabel({ label }: { label: string }) {
   return <span style={{ opacity: pending ? 0.5 : 1, transition: "opacity var(--transition-fast)" }}>{label}</span>;
 }
 
+function SignOutButton({ style }: { style?: React.CSSProperties }) {
+  return (
+    <form action="/api/auth/signout" method="POST">
+      <button type="submit" className="btn btn-sm btn-ghost" style={style}>
+        Sign out
+      </button>
+    </form>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
 
   if (AUTH_PATHS.some((p) => pathname.startsWith(p))) return null;
 
   return (
-    <nav style={{ width: 160, flexShrink: 0, display: "flex", flexDirection: "column", gap: 2, paddingTop: 4 }}>
-      {LINKS.map((link) => {
-        const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
-        return (
-          <Link key={link.href} href={link.href} className="nav-link" data-active={active}>
-            <NavLinkLabel label={link.label} />
-          </Link>
-        );
-      })}
-      <form action="/api/auth/signout" method="POST" style={{ marginTop: 16 }}>
-        <button type="submit" className="btn btn-sm btn-ghost" style={{ width: "100%", justifyContent: "flex-start" }}>
-          Sign out
-        </button>
-      </form>
-    </nav>
+    <>
+      {/* Mobile only: app title + sign out, sticky above the page content. */}
+      <div className="mobile-topbar">
+        <span style={{ fontWeight: 600, fontSize: 15 }}>Hevy Coach</span>
+        <SignOutButton />
+      </div>
+
+      {/* Desktop only: left-hand nav column. */}
+      <nav className="sidebar-desktop">
+        {LINKS.map((link) => {
+          const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+          return (
+            <Link key={link.href} href={link.href} className="nav-link" data-active={active}>
+              <NavLinkLabel label={link.label} />
+            </Link>
+          );
+        })}
+        <SignOutButton style={{ width: "100%", justifyContent: "flex-start", marginTop: 16 }} />
+      </nav>
+
+      {/* Mobile only: fixed bottom tab bar. */}
+      <nav className="mobile-bottomnav">
+        {LINKS.map((link) => {
+          const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+          return (
+            <Link key={link.href} href={link.href} data-active={active}>
+              <NavLinkLabel label={link.label} />
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }

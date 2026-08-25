@@ -46,7 +46,7 @@ function ExerciseDiffRow({ edits }: { edits: ProposedEdit[] }) {
   return (
     <div style={{ padding: "8px 0", borderTop: "1px solid var(--border-default)" }}>
       <div style={{ fontWeight: 500, marginBottom: 4 }}>{edits[0].exerciseTitle}</div>
-      <div style={{ display: "flex", gap: 16, fontSize: 13, color: "var(--text-secondary)" }}>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
         <span style={{ color: changed.sets ? "var(--warning)" : "var(--text-secondary)" }}>
           {before.workingSets} → {after.workingSets} sets
         </span>
@@ -114,7 +114,7 @@ export default function RoutineDraftCard({
 
   return (
     <div className="card-nested" style={{ fontSize: 13 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
         <div style={{ fontWeight: 600, fontSize: 14 }}>{routineTitle}</div>
         {status === "pending" ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

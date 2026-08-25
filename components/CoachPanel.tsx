@@ -100,6 +100,8 @@ function ReviewCard({ review }: { review: CoachReview }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 8,
           width: "100%",
           boxSizing: "border-box",
         }}
@@ -232,7 +234,7 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
         <button onClick={() => generate("performance")} disabled={generatingType !== null} className="btn btn-primary">
           {generatingType === "performance" ? "Analyzing your week…" : "Generate weekly review"}
         </button>
@@ -241,7 +243,7 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <label style={{ color: "var(--text-secondary)", fontSize: 12 }}>
           Plan the week of{" "}
           <input
@@ -262,7 +264,7 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
       </div>
       {error && <div style={{ color: "var(--error)", fontSize: 13, marginBottom: 12 }}>{error}</div>}
 
-      <div style={{ display: "flex", gap: 4, marginTop: 20, borderBottom: "1px solid var(--border-default)" }}>
+      <div style={{ display: "flex", gap: 4, marginTop: 20, borderBottom: "1px solid var(--border-default)", overflowX: "auto" }}>
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -276,6 +278,8 @@ export default function CoachPanel({ initialReviews }: { initialReviews: CoachRe
               fontSize: 13,
               cursor: "pointer",
               marginBottom: -1,
+              whiteSpace: "nowrap",
+              flexShrink: 0,
               transition: "color var(--transition-fast), border-color var(--transition-fast)",
             }}
           >

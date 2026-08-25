@@ -32,7 +32,7 @@ function DayRow({ reviewId, day }: { reviewId: string; day: PlannedDay }) {
 
   return (
     <div className="card-nested">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 6 }}>
         <div>
           <div style={{ fontWeight: 500, fontSize: 13 }}>
             {day.weekday} · {day.date}

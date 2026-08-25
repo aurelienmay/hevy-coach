@@ -66,7 +66,7 @@ export default async function OverviewPage({
 
   return (
     <main>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
         <h1 style={{ fontSize: 22 }}>
           {weekOffset === 0 ? "This week" : formatRange(weekStart, weekEnd)} — working sets only
         </h1>
@@ -108,26 +108,28 @@ export default async function OverviewPage({
       {sessions.length === 0 ? (
         <p style={{ color: "var(--text-secondary)", fontSize: 13 }}>No sessions logged this week.</p>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Title</th>
-              <th>Working sets</th>
-              <th>Total sets (incl. warmup)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.map((s) => (
-              <tr key={s.id}>
-                <td>{new Date(s.start_time).toLocaleDateString()}</td>
-                <td>{s.title}</td>
-                <td>{workingSetsCount(s)}</td>
-                <td>{totalSetsCount(s)}</td>
+        <div className="table-scroll">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Title</th>
+                <th>Working sets</th>
+                <th>Total sets (incl. warmup)</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sessions.map((s) => (
+                <tr key={s.id}>
+                  <td>{new Date(s.start_time).toLocaleDateString()}</td>
+                  <td>{s.title}</td>
+                  <td>{workingSetsCount(s)}</td>
+                  <td>{totalSetsCount(s)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </main>
   );
