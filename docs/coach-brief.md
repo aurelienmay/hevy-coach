@@ -31,6 +31,10 @@ L'utilisateur s'est dispersé entre plusieurs repos et idées : un bot `assistan
 | D9 | **Budget : 10 CHF/mois maximum** de coûts LLM en plus de l'abonnement Claude existant. |
 | D10 | **Migros = « actions » au sens suisse, c'est-à-dire les promotions.** Il faut des promos et de la recherche produit (pour les GTIN et les prix), **pas de panier ni de commande**. |
 | D11 | **Scorecast est abandonné.** **Le trading est conservé** (calendrier économique et analyse Gold SMC/ICT). Les **alertes de promos** (Kuiu aujourd'hui) sont conservées et **généralisées** à n'importe quel site. |
+| D12 | **Abonnement Claude Pro** au départ. On mesure la consommation réelle de quota en phases 0 à 2 avant de décider s'il faut passer à Max (voir §8). |
+| D13 | **Webhooks HTTPS** sur un **sous-domaine du domaine personnel de l'utilisateur** (hébergé chez Infomaniak), par exemple `coach.<domaine>`. Le domaine exact est hors de ce document. |
+| D14 | **Le projet Supabase de `hevy-coach` est réutilisé** (et renommé si besoin). |
+| D15 | **Le code de `assistant` est poussé dans un repo GitHub privé** pour servir de source au portage. Le nouveau repo `coach` sera **privé** lui aussi. |
 
 ---
 
@@ -182,7 +186,7 @@ Côté Claude Code : le **CLAUDE.md** contient les règles, les personas et l'in
 
 ## 6. Inventaire : quoi porter
 
-> ⚠️ Le repo `assistant` est **local, sans remote GitHub**. Il faut le pousser dans un repo privé, ou copier les modules ci-dessous dans le nouveau repo, avant le portage.
+> Le code de `assistant` est publié dans le repo **privé** `aurelienmay/assistant` (D15). Les chemins ci-dessous y font référence.
 
 | Source | Élément | Décision |
 |---|---|---|
@@ -219,7 +223,7 @@ Côté Claude Code : le **CLAUDE.md** contient les règles, les personas et l'in
 | Risque | Mitigation |
 |---|---|
 | Channels est en **research preview** : l'interface peut changer, voire disparaître | Le cerveau reste un simple `claude` dans le repo. Plan B : remplacer le plugin channel par un petit pont Telegram maison qui appelle `claude -p --resume` à chaque message (même binaire, même abonnement). |
-| **Quota d'abonnement** partagé avec l'usage perso de Claude Code | Discussion courante avec un modèle léger et les grosses tâches de code avec un modèle plus fort. Les jobs sans LLM restent sans LLM. Surveiller les limites. |
+| **Quota d'abonnement Pro** (le plus petit) partagé avec l'usage perso de Claude Code. Un agent actif toute la journée, plus des sessions de construction, risque d'atteindre les limites des fenêtres de 5 h. | Discussion courante avec le modèle le plus léger, modèle plus fort réservé aux constructions de plugins. Aucun LLM dans les jobs qui n'en ont pas besoin. Construction des plugins de préférence quand l'utilisateur ne code pas lui-même. **Mesurer pendant 2 à 3 semaines** ; si les limites gênent, passer à Max (coût nettement supérieur au budget D9 : c'est une décision de l'utilisateur). |
 | Session longue : **compaction** du contexte, crash | Mémoire en base, CLAUDE.md, redémarrage systemd, `context_snapshot` au démarrage. |
 | **Injection de prompt** via des sites scrappés, combinée au mode sans permissions | Plugins à sortie structurée, secrets illisibles par la session, hooks, sauvegardes. |
 | L'API Migros non officielle casse | Plugin isolé, alerte après N échecs (patron pricewatch). |
@@ -228,6 +232,8 @@ Côté Claude Code : le **CLAUDE.md** contient les règles, les personas et l'in
 
 ## 9. Questions restantes
 
-1. **Plan d'abonnement Claude** (Pro, Max 5× ou Max 20×) : cela détermine le quota disponible pour un agent actif 24/7, en plus de l'usage perso.
-2. **Nom de domaine** pour le webhook santé (un sous-domaine d'un domaine existant, ou Infomaniak).
-3. Faut-il réutiliser le **projet Supabase de hevy-coach** ou en créer un neuf ? (Reco : le réutiliser.)
+Toutes les questions de cadrage sont tranchées (D1 à D15). Prérequis côté utilisateur avant la phase 0 :
+
+1. Louer le **VPS Infomaniak**.
+2. Créer le **sous-domaine** et le faire pointer sur l'IP du VPS.
+3. Créer le repo GitHub **privé** du nouveau projet `coach` (vide).
