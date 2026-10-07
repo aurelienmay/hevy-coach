@@ -63,7 +63,7 @@ L'utilisateur s'est dispersé entre plusieurs repos et idées : un bot `assistan
 Faits vérifiés dans la doc officielle (octobre 2026) :
 
 - **Channels Telegram** ([doc](https://code.claude.com/docs/en/channels)) : c'est un plugin officiel (`telegram@claude-plugins-official`, exécuté sous Bun) qui fait du long polling sur le bot et injecte chaque message dans une **session Claude Code en cours**. Claude répond avec les outils `reply`, `react` et `edit_message`. **Les photos et documents reçus sont téléchargés** et lisibles par Claude, et **l'envoi d'images** est possible (graphiques). L'accès est verrouillé par une liste blanche d'expéditeurs (appairage par code). Les abonnés Pro et Max sans organisation y ont accès directement.
-- **Limites** : la fonctionnalité est en **research preview** (les flags et le protocole peuvent changer). Les messages n'arrivent **que si la session tourne**. Le plugin ne gère **ni boutons inline**, ni historique des messages, ni approbation des permissions depuis Telegram. Sans personne au terminal, il faut le mode `--dangerously-skip-permissions` (acceptable ici car le VPS est isolé et dédié ; garde-fous en §4.6).
+- **Limites** : la fonctionnalité est en **research preview** (les flags et le protocole peuvent changer). Les messages n'arrivent **que si la session tourne**. Le plugin ne gère **ni boutons inline**, ni historique des messages, ni approbation des permissions depuis Telegram. Sans personne au terminal, on utilise le **mode de permission « auto »** (désormais le mode par défaut de Claude Code). Un classifieur vérifie chaque action avant de l'exécuter, laisse passer celles jugées peu risquées et bloque le reste, y compris les tentatives d'injection de prompt. Garde-fous complémentaires en §4.6.
 - **Conditions d'utilisation** ([doc](https://code.claude.com/docs/en/legal-and-compliance)) : se connecter au **binaire Claude Code non modifié** avec son propre abonnement est explicitement permis, y compris sur une machine hébergée. En revanche, l'Agent SDK ou un outil tiers avec les identifiants d'abonnement relève de l'**API facturée**. **Le cerveau doit donc être le CLI `claude` lui-même**, en session interactive persistante ou en `claude -p`, et non une application maison sur l'Agent SDK.
 - **Conséquence pour le budget** : la conversation, la vision et la programmation consomment le **quota de l'abonnement** (fenêtres de 5 h, partagées avec l'usage perso de Claude Code par l'utilisateur), pas l'API. Les 10 CHF/mois (D9) restent une réserve pour d'éventuels appels API directs dans des jobs, idéalement zéro.
 
@@ -151,7 +151,7 @@ Les **petites adaptations** (changer un seuil, ajouter un produit à surveiller,
 
 Côté Claude Code : le **CLAUDE.md** contient les règles, les personas et l'instruction de charger le profil et l'état de la semaine en début de session (outil MCP `context_snapshot`). Les **skills** portent les workflows. La session étant longue, Claude Code **compacte** son contexte : rien d'important ne doit vivre uniquement dans la conversation, tout est écrit en base.
 
-### 4.6 Garde-fous (session en `--dangerously-skip-permissions`)
+### 4.6 Garde-fous (session en mode de permission « auto »)
 
 - **VPS dédié** : il ne contient que les accès de l'agent, sans aucune donnée perso hors de Supabase.
 - **Hooks Claude Code** (`PreToolUse`) qui bloquent :
@@ -218,22 +218,37 @@ Côté Claude Code : le **CLAUDE.md** contient les règles, les personas et l'in
 
 ---
 
-## 8. Risques et plan B
+## 8. Résultats du test de faisabilité (2026-10-07)
+
+Test réalisé avant toute location de serveur.
+
+| Test | Résultat |
+|---|---|
+| **13 API externes depuis une IP de datacenter** (runner GitHub Actions, Azure US) : promos et recherche Migros avec GTIN, catalogue Kuiu et prix en CHF, ForexFactory, Yahoo Gold M15, Open Food Facts, Open-Meteo, plus la joignabilité de Telegram, Hevy, iCloud CalDAV, Anthropic et Supabase | ✅ 13/13, identique au réseau résidentiel. Le risque de blocage Cloudflare ou Yahoo des IP de datacenter est écarté. |
+| **Claude Code avec le plugin channel Telegram** (v0.0.7, Bun 1.4) sur un bot de test, session en `screen` | ✅ Les messages arrivent et la réponse part en ≈ 5 s. |
+| **Authentification** | ✅ Abonnement Claude Pro (pas d'API). La première connexion et l'onboarding demandent une intervention humaine dans le terminal. |
+| **Réception d'images** (capture de graphique, photo de repas, étiquette nutritionnelle) | ✅ 3/3 reçues dans l'inbox et lues. Estimations nutritionnelles cohérentes, avec les incertitudes signalées. |
+| **Envoi d'image** (graphique généré) | Pas testé. La fonction est documentée par le plugin (`reply` avec `files`). |
+| **Mode de permission** | Le mode « auto » est actif par défaut et a bloqué plusieurs actions jugées risquées pendant le test (voir §4.6). |
+| **Connecteurs claude.ai** | La session hérite des connecteurs du compte (Gmail, Notion…). Sur le serveur, **désactiver ceux qui ne servent pas**, pour réduire la surface d'attaque d'un agent joignable par Telegram. |
+| **Modèle par défaut** | Opus en effort élevé, trop gourmand pour le quota Pro. Lancer l'agent avec un **modèle léger et un effort bas** pour la discussion, et réserver un modèle fort aux constructions de plugins. |
+
+## 9. Risques et plan B
 
 | Risque | Mitigation |
 |---|---|
 | Channels est en **research preview** : l'interface peut changer, voire disparaître | Le cerveau reste un simple `claude` dans le repo. Plan B : remplacer le plugin channel par un petit pont Telegram maison qui appelle `claude -p --resume` à chaque message (même binaire, même abonnement). |
 | **Quota d'abonnement Pro** (le plus petit) partagé avec l'usage perso de Claude Code. Un agent actif toute la journée, plus des sessions de construction, risque d'atteindre les limites des fenêtres de 5 h. | Discussion courante avec le modèle le plus léger, modèle plus fort réservé aux constructions de plugins. Aucun LLM dans les jobs qui n'en ont pas besoin. Construction des plugins de préférence quand l'utilisateur ne code pas lui-même. **Mesurer pendant 2 à 3 semaines** ; si les limites gênent, passer à Max (coût nettement supérieur au budget D9 : c'est une décision de l'utilisateur). |
 | Session longue : **compaction** du contexte, crash | Mémoire en base, CLAUDE.md, redémarrage systemd, `context_snapshot` au démarrage. |
-| **Injection de prompt** via des sites scrappés, combinée au mode sans permissions | Plugins à sortie structurée, secrets illisibles par la session, hooks, sauvegardes. |
+| **Injection de prompt** via des sites scrappés | Plugins à sortie structurée, secrets illisibles par la session, hooks, sauvegardes. |
 | L'API Migros non officielle casse | Plugin isolé, alerte après N échecs (patron pricewatch). |
 
 ---
 
-## 9. Questions restantes
+## 10. Questions restantes
 
 Toutes les questions de cadrage sont tranchées (D1 à D15). Prérequis côté utilisateur avant la phase 0 :
 
-1. Louer le **VPS Infomaniak**.
-2. Créer le **sous-domaine** et le faire pointer sur l'IP du VPS.
+1. Créer un compte **Infomaniak Public Cloud** (300 CHF de crédits sur 3 mois, facturation à l'usage, sans engagement) et y valider l'installation avant d'éventuellement passer sur un VPS Lite à engagement annuel.
+2. Créer le **sous-domaine** et le faire pointer sur l'IP du serveur.
 3. Créer le repo GitHub **privé** du nouveau projet `coach` (vide).
